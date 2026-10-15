@@ -51,31 +51,33 @@ function ExamList({ exams, fetchExamsList, fetchHistory, startExam, handleEditCl
           style={{ display: 'none' }}
           onChange={handleJsonImport}
         />
-        <div className="mobile-action-grid mb-2">
+        <div className="exam-list-toolbar">
+          <div className="mobile-action-grid mb-2">
+            <button
+              className="btn btn-outline-primary mobile-btn-tile"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              📥 Nhập JSON
+            </button>
+            <button
+              className="btn btn-outline-success mobile-btn-tile"
+              onClick={() => {
+                if (exams.length === 0) return toast.warning("Chưa có đề thi nào để xuất!");
+                exportAllDataToJson();
+                toast.info("Đã tải file JSON sao lưu!");
+              }}
+            >
+              📤 Xuất JSON
+            </button>
+          </div>
+
           <button
-            className="btn btn-outline-primary mobile-btn-tile"
-            onClick={() => fileInputRef.current?.click()}
+            className={`btn w-100 mobile-btn-tile ${showCreateBox ? 'btn-secondary' : 'btn-accent'}`}
+            onClick={() => setShowCreateBox(!showCreateBox)}
           >
-            📥 Nhập JSON
-          </button>
-          <button
-            className="btn btn-outline-success mobile-btn-tile"
-            onClick={() => {
-              if (exams.length === 0) return toast.warning("Chưa có đề thi nào để xuất!");
-              exportAllDataToJson();
-              toast.info("Đã tải file JSON sao lưu!");
-            }}
-          >
-            📤 Xuất JSON
+            {showCreateBox ? '✖ Đóng khung tạo đề' : '➕ Tạo đề thi mới (Dán văn bản)'}
           </button>
         </div>
-
-        <button
-          className={`btn w-100 mobile-btn-tile ${showCreateBox ? 'btn-secondary' : 'btn-accent'}`}
-          onClick={() => setShowCreateBox(!showCreateBox)}
-        >
-          {showCreateBox ? '✖ Đóng khung tạo đề' : '➕ Tạo đề thi mới (Dán văn bản)'}
-        </button>
       </div>
 
       {/* Khung tạo đề đóng/mở gọn gàng */}
@@ -128,7 +130,7 @@ function ExamList({ exams, fetchExamsList, fetchHistory, startExam, handleEditCl
               <div className="card shadow-sm border-0 h-100 rounded-4 border-accent-left">
                 <div className="card-body p-3 d-flex flex-column justify-content-between">
                   <div className="d-flex justify-content-between align-items-start gap-2 mb-3">
-                    <h5 className="card-title fw-bold mb-0" style={{ color: 'var(--accent)', fontSize: '1.1rem' }}>
+                    <h5 className="card-title fw-bold mb-0 text-break" style={{ color: 'var(--accent)', fontSize: '1.1rem' }}>
                       {exam.title}
                     </h5>
                     <span className="badge bg-accent-light text-nowrap rounded-pill px-2 py-1" style={{ color: 'var(--accent)' }}>

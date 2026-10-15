@@ -5,7 +5,7 @@ function ExamImportModal({ show, onClose, importText, setImportText, onImport })
   return (
     <div className="modal d-block modal-backdrop-blur" style={{ zIndex: 1050, padding: '10px' }}>
       <div className="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-md-down">
-        <div className="modal-content shadow-lg border-0 rounded-4 overflow-hidden h-100">
+        <div className="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
           <div className="modal-header modal-header-gradient">
             <h5 className="modal-title fw-bold">📥 Import thêm hàng loạt</h5>
             <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>

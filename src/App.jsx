@@ -4,7 +4,7 @@ import ExamMode from './components/ExamMode';
 
 function App() {
   return (
-    <div className="container-fluid py-3" style={{ maxWidth: '1000px' }}>
+    <div className="container-fluid py-3" style={{ maxWidth: '1140px' }}>
       <header className="text-center mb-3">
         <h1 className="fw-bold fs-3 gradient-text d-flex align-items-center justify-content-center gap-2 mb-1">
           <img src="/sea_15651557.ico" alt="logo" style={{ width: '34px', height: '34px', objectFit: 'contain' }} />

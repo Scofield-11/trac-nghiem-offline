@@ -49,7 +49,7 @@ function ExamEditForm({ editTitle, setEditTitle, editQuestions, handleDeleteQues
         />
 
         {/* Lưới nút Xuất / Nhập nhanh cho đề thi này */}
-        <div className="mobile-action-grid mb-4">
+        <div className="mobile-action-grid edit-action-grid mb-4">
           <button className="btn btn-outline-primary mobile-btn-tile bg-white" onClick={() => setShowImportModal(true)}>
             📋 Dán thêm câu
           </button>

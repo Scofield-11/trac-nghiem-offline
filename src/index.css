@@ -544,14 +544,17 @@ body {
   padding: 10px 12px;
 }
 
-/* Nút chọn đáp án A/B/C/D tối ưu cho ngón tay trên Mobile */
+/* Nút chọn đáp án A/B/C/D tối ưu cho ngón tay trên Mobile & căn chuẩn trên PC */
 .answer-option {
   min-height: 54px;
+  height: 100%;
   padding: 12px 14px 12px 54px !important;
   border-radius: 14px !important;
   font-size: 0.98rem;
   line-height: 1.4;
   border-width: 1.5px !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
 }
 
 .answer-letter {
@@ -562,9 +565,112 @@ body {
   font-size: 0.9rem;
 }
 
+.exam-sticky-title {
+  max-width: 200px;
+}
+
+.desktop-sidebar-actions {
+  display: none;
+}
+
 @media (max-width: 575.98px) {
   .container, .container-fluid {
     padding-left: 12px !important;
     padding-right: 12px !important;
+  }
+}
+
+/* =========================================================
+   ĐIỀU CHỈNH RIÊNG CHO TABLET & PC (KHÔNG ẢNH HƯỞNG MOBILE)
+   ========================================================= */
+
+@media (min-width: 576px) {
+  .mobile-sticky-top {
+    margin-left: 0;
+    margin-right: 0;
+    border-radius: var(--radius);
+  }
+}
+
+@media (min-width: 768px) {
+  /* Thanh công cụ trang chủ xếp gọn 1 hàng ngang trên PC */
+  .exam-list-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .exam-list-toolbar .mobile-action-grid {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 0 !important;
+    flex-shrink: 0;
+  }
+
+  .exam-list-toolbar .mobile-btn-tile {
+    min-height: 44px !important;
+    padding: 0.5rem 1.25rem;
+  }
+
+  /* 4 nút xuất/nhập trong trang Sửa đề xếp thành 1 hàng 4 cột trên PC */
+  .edit-action-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 992px) {
+  /* Bố cục 2 cột khi làm bài trên PC: Cột trái câu hỏi - Cột phải Sidebar */
+  .exam-taking-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 330px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  .exam-taking-layout .exam-questions-col {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    max-width: 100% !important;
+  }
+
+  .exam-taking-layout .mobile-sticky-top {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: 20px;
+    margin-bottom: 0 !important;
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(124, 58, 237, 0.14);
+    box-shadow: var(--shadow-card);
+    background: #fff;
+  }
+
+  .exam-taking-layout .exam-sticky-title {
+    max-width: 210px;
+    font-size: 0.95rem;
+  }
+
+  .exam-taking-layout .question-navigator {
+    max-height: 46vh;
+    overflow-y: auto;
+    justify-content: flex-start;
+    padding: 6px 2px;
+  }
+
+  /* Hiện nút Nộp bài / Làm lại ngay trong Sidebar phải trên PC */
+  .exam-taking-layout .desktop-sidebar-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  /* Ẩn thanh ghim đáy trên màn hình làm bài PC vì đã có trong Sidebar */
+  .exam-taking-layout .mobile-bottom-bar {
+    display: none !important;
   }
 }

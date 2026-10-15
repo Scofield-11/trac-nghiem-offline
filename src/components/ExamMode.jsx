@@ -330,7 +330,9 @@ function ExamMode() {
         />
       )}
 
-      <ExamHistoryTable history={history} setViewHistory={setViewHistory} handleClearHistory={handleClearHistory} />
+      {!editingExamId && (
+        <ExamHistoryTable history={history} setViewHistory={setViewHistory} handleClearHistory={handleClearHistory} />
+      )}
     </div>
   );
 }

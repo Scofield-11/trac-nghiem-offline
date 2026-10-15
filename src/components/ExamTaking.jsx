@@ -24,7 +24,9 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
   const scrollToQuestion = (idx) => {
     const element = document.getElementById(`question-${idx}`);
     if (element) {
-      const y = element.getBoundingClientRect().top + window.scrollY - 80;
+      const stickyBar = document.querySelector('.mobile-sticky-top');
+      const offset = window.innerWidth >= 992 ? 24 : (stickyBar ? stickyBar.offsetHeight + 12 : 120);
+      const y = element.getBoundingClientRect().top + window.scrollY - offset;
       window.scrollTo({ top: y, behavior: 'smooth' });
     }
   };
@@ -96,7 +98,7 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
   };
 
   return (
-    <div className="container-fluid mt-3">
+    <div className="container-fluid mt-3 exam-taking-layout">
       {/* Confirm Back Modal */}
       {showConfirmBack && (
         <div className="modal d-block modal-backdrop-blur" style={{ zIndex: 1050, padding: '10px' }}>
@@ -126,14 +128,14 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
         </div>
       )}
 
-      {/* Thanh điều hướng ghim đỉnh màn hình Mobile */}
+      {/* Thanh điều hướng ghim đỉnh màn hình Mobile / Sidebar phải trên PC */}
       <div className="mobile-sticky-top mb-3 d-print-none">
         <div className="d-flex justify-content-between align-items-center mb-2">
           <button className="btn btn-light border btn-mobile-chip" onClick={handleBackClick}>
             ← Thoát
           </button>
           <div className="text-end">
-            <span className="fw-bold small d-block text-truncate" style={{ maxWidth: '200px' }}>
+            <span className="fw-bold small d-block text-truncate exam-sticky-title">
               {examData.title}
             </span>
             <span className="text-muted" style={{ fontSize: '0.8rem' }}>
@@ -165,10 +167,40 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
             );
           })}
         </div>
+
+        {/* Cụm nút hành động hiển thị trong Sidebar khi ở trên PC */}
+        <div className="desktop-sidebar-actions">
+          {!isSubmitted ? (
+            <button className="btn btn-accent w-100 mobile-btn-tile" onClick={handleSubmit}>
+              📤 Nộp bài ({answeredCount}/{totalQuestions} câu)
+            </button>
+          ) : (
+            <>
+              <button
+                className="btn btn-warning w-100 mobile-btn-tile text-dark"
+                onClick={() => {
+                  setAnswers({});
+                  setIsSubmitted(false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                🔄 Làm lại bài này
+              </button>
+              {wrongQuestions.length > 0 && (
+                <button className="btn btn-accent w-100 mobile-btn-tile" onClick={handleCreateFromCurrentMistakes}>
+                  📝 Tạo đề câu sai ({wrongQuestions.length})
+                </button>
+              )}
+              <button className="btn btn-outline-secondary w-100 mobile-btn-tile" onClick={backToList}>
+                🏠 Về danh sách đề
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Nội dung câu hỏi */}
-      <div className="mx-auto" style={{ maxWidth: '800px' }}>
+      <div className="mx-auto exam-questions-col" style={{ maxWidth: '800px' }}>
         {!isSubmitted ? (
           <>
             {examData.questions.map((q, idx) => (
