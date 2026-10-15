@@ -1,0 +1,570 @@
+:root {
+  /* === BẢNG MÀU === */
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-light: #ede9fe;
+  --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  --success-gradient: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  --danger-gradient: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+  --warning-gradient: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+
+  /* === SHADOWS === */
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-card-hover: 0 10px 25px rgba(0,0,0,0.08), 0 4px 10px rgba(0,0,0,0.04);
+  --shadow-accent: 0 4px 14px rgba(124,58,237,0.3);
+
+  /* === BO GÓC === */
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+
+  /* === TRANSITION === */
+  --transition: 0.2s ease;
+
+  /* === SAFE AREA (mobile notch/gesture bar) === */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+
+/* ==============================
+   GLOBAL
+   ============================== */
+
+body {
+  background: linear-gradient(180deg, #eef0ff 0%, #f6f7fb 120px);
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  margin: 0;
+  padding: 0;
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+  padding-bottom: var(--safe-bottom);
+  min-height: 100vh;
+}
+
+
+/* ==============================
+   BUTTONS
+   ============================== */
+
+/* MOBILE-FIRST: mọi nút bấm tối thiểu 44px để bấm vừa ngón tay */
+.btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+  gap: 6px;
+}
+
+/* Nút nhỏ không cần ép chiều cao 44px (ví dụ nút Lưu) */
+.btn-sm {
+  min-height: 32px !important;
+  font-size: 0.85rem !important;
+  padding: 0.25rem 0.75rem !important;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+/* Nút accent chính — gradient tím */
+.btn-accent {
+  background: var(--accent-gradient);
+  border: none;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--shadow-accent);
+}
+
+.btn-accent:hover {
+  color: #fff;
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(124,58,237,0.35);
+}
+
+
+/* ==============================
+   CARDS
+   ============================== */
+
+.card-hover {
+  transition: all var(--transition);
+  border-radius: var(--radius) !important;
+}
+
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+
+/* ==============================
+   FORMS — cỡ chữ 16px để iOS không tự zoom
+   ============================== */
+
+input.form-control,
+select.form-select,
+textarea.form-control,
+.input-group-text {
+  font-size: 16px !important;
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+input.form-control:focus,
+textarea.form-control:focus,
+select.form-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.12);
+}
+
+
+/* ==============================
+   ANSWER OPTIONS — với chữ cái A/B/C/D
+   ============================== */
+
+.answer-option {
+  position: relative;
+  border-radius: var(--radius-sm) !important;
+  padding-left: 52px !important;
+  text-align: left;
+  transition: all var(--transition);
+  font-weight: 500;
+  min-height: 48px;
+}
+
+.answer-option:not(.btn-success):not(.btn-danger):not(.btn-primary):hover {
+  border-color: var(--accent) !important;
+  background-color: var(--accent-light);
+}
+
+.answer-letter {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+  background: rgba(0,0,0,0.06);
+  color: #555;
+  transition: all var(--transition);
+}
+
+.answer-option.btn-primary .answer-letter,
+.answer-option.btn-success .answer-letter,
+.answer-option.btn-danger .answer-letter {
+  background: rgba(255,255,255,0.25);
+  color: inherit;
+}
+
+
+/* ==============================
+   QUESTION NUMBER BADGE
+   ============================== */
+
+.question-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent-gradient);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+
+/* ==============================
+   QUESTION NAVIGATOR
+   ============================== */
+
+.question-navigator {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-height: 65vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.nav-question-btn {
+  width: 44px !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  font-weight: 700;
+  font-size: 0.85rem;
+  transition: all var(--transition);
+}
+
+.nav-question-btn:hover {
+  transform: scale(1.1);
+}
+
+/* Responsive — thanh cuộn ngang trên mobile */
+@media (max-width: 991.98px) {
+  .question-navigator {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: visible;
+    max-height: none;
+    justify-content: flex-start !important;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+  .question-navigator .nav-question-btn {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+}
+
+
+/* ==============================
+   GLASSMORPHISM
+   ============================== */
+
+.glass-card {
+  background: rgba(255,255,255,0.8) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.6) !important;
+}
+
+
+/* ==============================
+   MODAL BACKDROP
+   ============================== */
+
+.modal-backdrop-blur {
+  background-color: rgba(0,0,0,0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.modal-header-gradient {
+  background: var(--accent-gradient);
+  color: #fff;
+  border: none;
+}
+
+.modal-header-gradient .btn-close {
+  filter: brightness(0) invert(1);
+}
+
+
+/* ==============================
+   GRADIENT UTILITIES
+   ============================== */
+
+.gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.border-accent-top {
+  border-top: 3px solid transparent;
+  border-image: var(--accent-gradient) 1;
+}
+
+.border-accent-left {
+  border-left: 4px solid var(--accent) !important;
+}
+
+.bg-accent-light {
+  background-color: var(--accent-light) !important;
+}
+
+
+/* ==============================
+   SCORE CARD
+   ============================== */
+
+.score-card {
+  background: var(--accent-gradient);
+  color: #fff;
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.score-card-success {
+  background: var(--success-gradient);
+}
+
+.score-card-warning {
+  background: var(--warning-gradient);
+}
+
+.score-card-danger {
+  background: var(--danger-gradient);
+}
+
+
+/* ==============================
+   HISTORY TABLE — RESPONSIVE
+   ============================== */
+
+@media (max-width: 767.98px) {
+  .history-table-desktop { display: none !important; }
+  .history-cards-mobile { display: block !important; }
+}
+
+@media (min-width: 768px) {
+  .history-table-desktop { display: block !important; }
+  .history-cards-mobile { display: none !important; }
+}
+
+.history-card-mobile {
+  border-radius: var(--radius);
+  border: none;
+  box-shadow: var(--shadow-card);
+  transition: all var(--transition);
+}
+
+.history-card-mobile:active {
+  transform: scale(0.98);
+}
+
+
+/* ==============================
+   SECTION DIVIDER
+   ============================== */
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.section-header::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-light), transparent);
+  border-radius: 1px;
+}
+
+
+/* ==============================
+   ANIMATIONS
+   ============================== */
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(124,58,237,0.4); }
+  70%  { box-shadow: 0 0 0 8px rgba(124,58,237,0); }
+  100% { box-shadow: 0 0 0 0 rgba(124,58,237,0); }
+}
+
+.animate-in {
+  animation: fadeInUp 0.35s ease forwards;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.shimmer-bg {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Staggered animation */
+.animate-in:nth-child(1) { animation-delay: 0s; }
+.animate-in:nth-child(2) { animation-delay: 0.05s; }
+.animate-in:nth-child(3) { animation-delay: 0.1s; }
+.animate-in:nth-child(4) { animation-delay: 0.15s; }
+.animate-in:nth-child(5) { animation-delay: 0.2s; }
+
+
+/* ==============================
+   PROGRESS BAR
+   ============================== */
+
+.progress-accent {
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #e9ecef;
+  display: flex;
+}
+
+.progress-accent .progress-bar {
+  background: var(--accent-gradient);
+  transition: width 0.5s ease;
+  border-radius: 4px;
+  height: 100%;
+}
+
+
+/* ==============================
+   WRONG ANSWER CARD (history review)
+   ============================== */
+
+.wrong-answer-card {
+  border-left: 4px solid #ef4444 !important;
+  border-radius: var(--radius) !important;
+  transition: all var(--transition);
+}
+
+.correct-answer-card {
+  border-left: 4px solid #10b981 !important; /* success green */
+  border-radius: var(--radius) !important;
+  transition: all var(--transition);
+}
+
+
+/* ==============================
+   PRINT
+   ============================== */
+
+@media print {
+  .d-print-none { display: none !important; }
+  body { background: #fff !important; }
+  .card, .bg-white { box-shadow: none !important; border: 1px solid #ddd !important; }
+  .score-card { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}
+
+/* =========================================================
+   NÂNG CẤP GIAO DIỆN MOBILE-FIRST & NÚT BẤM CẢM ỨNG
+   ========================================================= */
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  padding-bottom: calc(90px + var(--safe-bottom)) !important;
+}
+
+.btn {
+  user-select: none;
+  -webkit-user-select: none;
+  font-weight: 600;
+}
+
+/* Nút bấm dạng ô lưới trên Mobile */
+.mobile-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.mobile-btn-tile {
+  min-height: 50px !important;
+  border-radius: 14px !important;
+  font-size: 0.95rem !important;
+  font-weight: 700 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+
+/* Nút hành động phụ (Chép, Lưu, Sửa, Xóa) to rõ trên Mobile */
+.btn-mobile-chip {
+  min-height: 40px !important;
+  padding: 0.4rem 0.85rem !important;
+  border-radius: 12px !important;
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+}
+
+/* Thanh công cụ ghim đáy màn hình điện thoại (ngay tầm ngón cái) */
+.mobile-bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1030;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(124, 58, 237, 0.15);
+  padding: 10px 14px calc(10px + var(--safe-bottom));
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.08);
+}
+
+.mobile-bottom-bar-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Thanh trạng thái ghim đỉnh màn hình khi làm bài */
+.mobile-sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  margin-left: -12px;
+  margin-right: -12px;
+  padding: 10px 12px;
+}
+
+/* Nút chọn đáp án A/B/C/D tối ưu cho ngón tay trên Mobile */
+.answer-option {
+  min-height: 54px;
+  padding: 12px 14px 12px 54px !important;
+  border-radius: 14px !important;
+  font-size: 0.98rem;
+  line-height: 1.4;
+  border-width: 1.5px !important;
+}
+
+.answer-letter {
+  left: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 575.98px) {
+  .container, .container-fluid {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+}
