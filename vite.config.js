@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg', 'sea_15651557.ico'],
+      includeAssets: ['logo-180.jpg', 'logo-512.jpg', 'favicon.svg', 'icons.svg'],
       manifest: {
         name: 'Thi Trắc Nghiệm Offline',
         short_name: 'Trắc Nghiệm',
@@ -19,14 +19,14 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/sea_15651557.ico',
-            sizes: '64x64 32x32 24x24 16x16',
-            type: 'image/x-icon'
+            src: '/logo-180.jpg',
+            sizes: '180x180',
+            type: 'image/jpeg'
           },
           {
-            src: '/favicon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
+            src: '/logo-512.jpg',
+            sizes: '512x512',
+            type: 'image/jpeg',
             purpose: 'any maskable'
           }
         ]
