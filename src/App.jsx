@@ -114,6 +114,9 @@ function App() {
       <ChangePasswordModal
         show={showChangePassword}
         onClose={() => setShowChangePassword(false)}
+        user={user}
+        profile={profile}
+        onProfileUpdated={(updatedProfile) => setProfile(updatedProfile)}
       />
 
       {/* Tự động ẩn toàn bộ Header khi đang làm bài, sửa đề hoặc xem lại câu sai để không bấm nhầm */}

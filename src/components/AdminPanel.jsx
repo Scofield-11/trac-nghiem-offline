@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { supabase, tempSupabaseAdminClient, formatLoginEmail } from '../api/supabaseClient';
+import { supabase } from '../api/supabaseClient';
 import {
   fetchQuestionReports,
   resolveAndFixQuestionReport,
@@ -8,28 +8,21 @@ import {
 } from '../api/axiosConfig';
 
 function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsChanged }) {
-  const [activeTab, setActiveTab] = useState('create'); // 'create' | 'users' | 'reports'
-  const [username, setUsername] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [password, setPassword] = useState('');
-  const [selectedNewUserExams, setSelectedNewUserExams] = useState([]);
-  const [creating, setCreating] = useState(false);
-
-  const fullNameRef = useRef(null);
-  const passwordRef = useRef(null);
+  const [activeTab, setActiveTab] = useState('users'); // 'users' | 'reports'
 
   const [users, setUsers] = useState([]);
   const [assignmentsMap, setAssignmentsMap] = useState({});
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [resettingUserId, setResettingUserId] = useState(null);
 
   const [reports, setReports] = useState([]);
   const [loadingReports, setLoadingReports] = useState(false);
-  const [draftEdits, setDraftEdits] = useState({}); // { [reportId]: { question_text, options, correct_ans } }
+  const [draftEdits, setDraftEdits] = useState({});
   const [savingReportId, setSavingReportId] = useState(null);
 
-  const fetchUsersAndAssignments = async () => {
-    setLoadingUsers(true);
+  const fetchUsersAndAssignments = async (silent = false) => {
+    if (!silent) setLoadingUsers(true);
     try {
       const [profilesRes, assignRes] = await Promise.all([
         supabase.from('profiles').select('*').order('username', { ascending: true }),
@@ -39,7 +32,11 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
       if (profilesRes.error) throw profilesRes.error;
       if (assignRes.error) throw assignRes.error;
 
-      setUsers(profilesRes.data || []);
+      const latestUsers = profilesRes.data || [];
+      setUsers(latestUsers);
+      setEditingUser((prev) =>
+        prev ? latestUsers.find((u) => u.id === prev.id) || prev : null
+      );
 
       const map = {};
       (assignRes.data || []).forEach((row) => {
@@ -48,9 +45,11 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
       });
       setAssignmentsMap(map);
     } catch (err) {
-      toast.error('Lỗi tải danh sách tài khoản: ' + (err.message || ''));
+      if (!silent) {
+        toast.error('Lỗi tải danh sách tài khoản: ' + (err.message || ''));
+      }
     } finally {
-      setLoadingUsers(false);
+      if (!silent) setLoadingUsers(false);
     }
   };
 
@@ -77,95 +76,31 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
   };
 
   useEffect(() => {
-    if (show) {
-      fetchUsersAndAssignments();
-      loadReports();
-    }
+    if (!show) return;
+
+    fetchUsersAndAssignments();
+    loadReports();
+
+    // Tự động cập nhật danh sách khi người dùng đổi tên hoặc đăng ký mới
+    const channel = supabase
+      .channel('admin-profiles-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles' },
+        () => {
+          fetchUsersAndAssignments(true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [show]);
 
   if (!show) return null;
 
   const pendingCount = reports.filter((r) => r.status === 'pending').length;
-
-  const toggleNewUserExam = (examId) => {
-    const id = Number(examId);
-    setSelectedNewUserExams((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
-  const handleSelectAllNewUserExams = () => {
-    if (selectedNewUserExams.length === systemExams.length) {
-      setSelectedNewUserExams([]);
-    } else {
-      setSelectedNewUserExams(systemExams.map((e) => Number(e.id)));
-    }
-  };
-
-  const handleCreateStudent = async (e) => {
-    e.preventDefault();
-    const cleanUsername = username.trim().toLowerCase();
-    const cleanFullName = fullName.trim();
-
-    if (!cleanUsername || !password) {
-      return toast.warning('Vui lòng nhập Username và Mật khẩu!');
-    }
-    if (password.length < 6) {
-      return toast.warning('Mật khẩu phải có tối thiểu 6 ký tự!');
-    }
-
-    setCreating(true);
-    try {
-      const email = formatLoginEmail(cleanUsername);
-
-      const { data, error } = await tempSupabaseAdminClient.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            username: cleanUsername,
-            full_name: cleanFullName || cleanUsername,
-            role: 'user',
-          },
-        },
-      });
-
-      if (error) throw error;
-
-      const newUserId = data?.user?.id;
-      if (!newUserId) {
-        throw new Error('Không lấy được ID tài khoản mới tạo.');
-      }
-
-      await supabase.from('profiles').upsert({
-        id: newUserId,
-        username: cleanUsername,
-        full_name: cleanFullName || cleanUsername,
-        role: 'user',
-        is_active: true,
-      });
-
-      if (selectedNewUserExams.length > 0) {
-        const rows = selectedNewUserExams.map((examId) => ({
-          user_id: newUserId,
-          exam_id: Number(examId),
-        }));
-        const { error: assignErr } = await supabase.from('exam_assignments').insert(rows);
-        if (assignErr) throw assignErr;
-      }
-
-      toast.success(`Đã tạo tài khoản [${cleanUsername}] và cấp ${selectedNewUserExams.length} học phần!`);
-      setUsername('');
-      setFullName('');
-      setPassword('');
-      setSelectedNewUserExams([]);
-      fetchUsersAndAssignments();
-    } catch (err) {
-      toast.error(err.message || 'Lỗi khi tạo tài khoản!');
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const handleToggleAssignment = async (userId, examId) => {
     const numericExamId = Number(examId);
@@ -217,15 +152,46 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
 
     if (error) {
       toast.error('Không thể cập nhật trạng thái tài khoản!');
-      fetchUsersAndAssignments();
+      fetchUsersAndAssignments(true);
     } else {
       toast.info(`Đã ${nextState ? 'mở khóa' : 'khóa'} tài khoản ${targetUser.username}`);
     }
   };
 
+  const handleResetPassword = async (targetUser) => {
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn đặt lại mật khẩu của "${
+          targetUser.full_name || targetUser.username
+        }" (@${targetUser.username}) về 123456?`
+      )
+    ) {
+      return;
+    }
+
+    setResettingUserId(targetUser.id);
+    try {
+      const { error } = await supabase.rpc('admin_reset_user_password', {
+        target_user_id: targetUser.id,
+        new_password: '123456',
+      });
+
+      if (error) throw error;
+      toast.success(`🔑 Đã reset mật khẩu của @${targetUser.username} về 123456!`);
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi reset mật khẩu!');
+    } finally {
+      setResettingUserId(null);
+    }
+  };
+
   const handleDraftChange = (reportId, field, value, optIdx = null) => {
     setDraftEdits((prev) => {
-      const current = prev[reportId] || { question_text: '', options: ['', '', '', ''], correct_ans: 1 };
+      const current = prev[reportId] || {
+        question_text: '',
+        options: ['', '', '', ''],
+        correct_ans: 1,
+      };
       if (field === 'option' && optIdx !== null) {
         const nextOpts = [...current.options];
         nextOpts[optIdx] = value;
@@ -276,33 +242,24 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
       <div className="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable modal-fullscreen-md-down">
         <div className="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
           <div className="modal-header modal-header-gradient">
-            <h5 className="modal-title fw-bold">🛡️ Quản Trị Hệ Thống & Phân Quyền Học Phần</h5>
+            <h5 className="modal-title fw-bold">🛡️ Quản Trị & Cấp Học Phần</h5>
             <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
           </div>
 
           <div className="modal-body bg-light p-3 p-md-4">
-            {/* Thanh chuyển 3 Tab trong Admin Panel gọn gàng trên Mobile */}
-            <div className="admin-tab-switcher mb-3">
-              <button
-                type="button"
-                className={`btn mobile-tab-btn ${activeTab === 'create' ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTab('create');
-                  setEditingUser(null);
-                }}
-              >
-                ➕ Cấp TK
-              </button>
+            <div className="mobile-tab-switcher mb-3">
               <button
                 type="button"
                 className={`btn mobile-tab-btn ${activeTab === 'users' ? 'active' : ''}`}
                 onClick={() => setActiveTab('users')}
               >
-                👥 Học viên ({users.filter((u) => u.role !== 'admin').length})
+                🎓 Cấp học phần ({users.filter((u) => u.role !== 'admin').length})
               </button>
               <button
                 type="button"
-                className={`btn mobile-tab-btn position-relative ${activeTab === 'reports' ? 'active' : ''}`}
+                className={`btn mobile-tab-btn position-relative ${
+                  activeTab === 'reports' ? 'active' : ''
+                }`}
                 onClick={() => setActiveTab('reports')}
               >
                 🔔 Báo lỗi
@@ -311,126 +268,6 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
                 )}
               </button>
             </div>
-
-            {activeTab === 'create' && (
-              <form onSubmit={handleCreateStudent} className="bg-white p-3 p-md-4 rounded-4 shadow-sm">
-                <h6 className="fw-bold text-primary mb-3">1. Thông tin đăng nhập</h6>
-                <div className="row g-3 mb-4">
-                  <div className="col-12 col-md-4">
-                    <label className="form-label small fw-bold text-muted">Username (*)</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="VD: nguyenvana"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      enterKeyHint="next"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck="false"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          fullNameRef.current?.focus();
-                        }
-                      }}
-                      required
-                    />
-                  </div>
-                  <div className="col-12 col-md-4">
-                    <label className="form-label small fw-bold text-muted">Họ và tên</label>
-                    <input
-                      ref={fullNameRef}
-                      type="text"
-                      className="form-control"
-                      placeholder="VD: Nguyễn Văn A"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      enterKeyHint="next"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          passwordRef.current?.focus();
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="col-12 col-md-4">
-                    <label className="form-label small fw-bold text-muted">Mật khẩu (*)</label>
-                    <input
-                      ref={passwordRef}
-                      type="text"
-                      className="form-control"
-                      placeholder="Tối thiểu 6 ký tự"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      enterKeyHint="done"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <h6 className="fw-bold text-primary mb-0">
-                    2. Chọn học phần cấp ngay ({selectedNewUserExams.length}/{systemExams.length})
-                  </h6>
-                  {systemExams.length > 0 && (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-primary"
-                      onClick={handleSelectAllNewUserExams}
-                    >
-                      {selectedNewUserExams.length === systemExams.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
-                    </button>
-                  )}
-                </div>
-
-                <div
-                  className="list-group mb-4 border rounded-3"
-                  style={{ maxHeight: '240px', overflowY: 'auto' }}
-                >
-                  {systemExams.length === 0 ? (
-                    <div className="text-center py-4 text-muted small">
-                      Chưa có học phần hệ thống nào. Hãy tạo đề ở tab "🎓 Học phần" trước!
-                    </div>
-                  ) : (
-                    systemExams.map((exam) => {
-                      const checked = selectedNewUserExams.includes(Number(exam.id));
-                      return (
-                        <label
-                          key={exam.id}
-                          className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-                          style={{ cursor: 'pointer' }}
-                        >
-                          <div className="d-flex align-items-center gap-2 text-truncate pe-2">
-                            <input
-                              type="checkbox"
-                              className="form-check-input mt-0"
-                              checked={checked}
-                              onChange={() => toggleNewUserExam(exam.id)}
-                            />
-                            <span className="fw-semibold text-truncate">{exam.title}</span>
-                          </div>
-                          <span className="badge bg-accent-light text-dark rounded-pill">
-                            {exam.questionCount || 0} câu
-                          </span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-
-                <button
-                  type="submit"
-                  className="btn btn-accent w-100 mobile-btn-tile"
-                  disabled={creating}
-                >
-                  {creating ? '⏳ Đang khởi tạo tài khoản...' : '✅ Tạo Tài Khoản & Cấp Học Phần'}
-                </button>
-              </form>
-            )}
 
             {activeTab === 'users' && (
               <div>
@@ -478,7 +315,9 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
                                 />
                                 <div>
                                   <div className="fw-bold text-dark">{exam.title}</div>
-                                  <small className="text-muted">{exam.questionCount || 0} câu hỏi</small>
+                                  <small className="text-muted">
+                                    {exam.questionCount || 0} câu hỏi
+                                  </small>
                                 </div>
                               </div>
                               <span
@@ -497,7 +336,9 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
                 ) : (
                   <div className="bg-white rounded-4 shadow-sm overflow-hidden">
                     {loadingUsers ? (
-                      <div className="text-center py-5 text-muted">⏳ Đang tải danh sách tài khoản...</div>
+                      <div className="text-center py-5 text-muted">
+                        ⏳ Đang tải danh sách tài khoản...
+                      </div>
                     ) : users.length === 0 ? (
                       <div className="text-center py-5 text-muted">Chưa có tài khoản nào.</div>
                     ) : (
@@ -519,14 +360,18 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
                                     <div className="fw-bold">
                                       {u.full_name || u.username}{' '}
                                       {u.role === 'admin' && (
-                                        <span className="badge bg-danger rounded-pill ms-1">Admin</span>
+                                        <span className="badge bg-danger rounded-pill ms-1">
+                                          Admin
+                                        </span>
                                       )}
                                     </div>
                                     <small className="text-muted">@{u.username}</small>
                                   </td>
                                   <td className="text-center">
                                     {u.role === 'admin' ? (
-                                      <span className="badge bg-success rounded-pill">Toàn quyền</span>
+                                      <span className="badge bg-success rounded-pill">
+                                        Toàn quyền
+                                      </span>
                                     ) : (
                                       <span className="badge bg-primary rounded-pill">
                                         {assignedCount} đề
@@ -535,12 +380,22 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
                                   </td>
                                   <td className="text-end pe-3">
                                     {u.role !== 'admin' && (
-                                      <div className="d-inline-flex gap-2">
+                                      <div className="d-inline-flex flex-wrap justify-content-end gap-1">
                                         <button
                                           className="btn btn-sm btn-outline-primary fw-bold"
                                           onClick={() => setEditingUser(u)}
                                         >
-                                          🎓 Phân quyền học phần
+                                          🎓 Cấp học phần
+                                        </button>
+                                        <button
+                                          className="btn btn-sm btn-outline-warning text-dark fw-bold"
+                                          onClick={() => handleResetPassword(u)}
+                                          disabled={resettingUserId === u.id}
+                                          title="Reset mật khẩu về 123456"
+                                        >
+                                          {resettingUserId === u.id
+                                            ? '⏳...'
+                                            : '🔑 Reset MK'}
                                         </button>
                                         <button
                                           className={`btn btn-sm ${
@@ -652,7 +507,9 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
 
                           <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 bg-light p-2 rounded-3">
                             <div className="d-flex align-items-center gap-1 flex-wrap">
-                              <span className="fw-bold text-success me-2 small">Chọn đáp án đúng:</span>
+                              <span className="fw-bold text-success me-2 small">
+                                Chọn đáp án đúng:
+                              </span>
                               {[1, 2, 3, 4].map((num) => (
                                 <button
                                   key={num}
