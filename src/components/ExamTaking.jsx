@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
-import api from '../api/axiosConfig';
+import api, { saveExamHistoryToCloud } from '../api/axiosConfig';
 import confetti from 'canvas-confetti';
 
 function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, openSaveModal, startExam }) {
@@ -47,26 +47,23 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
       user_ans: answers[q.id]
     }));
 
-    const newRecord = {
-      id: Date.now(),
-      examId: examData.id,
-      title: examData.title,
-      score: scoreCount,
-      total: examData.questions.length,
-      date: new Date().toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }),
-      wrongDetails: wrongDetails
-    };
-
-    const currentHistory = JSON.parse(localStorage.getItem('scofieldExamHistory') || '[]');
-    const updatedHistory = [newRecord, ...currentHistory].slice(0, 50);
-    localStorage.setItem('scofieldExamHistory', JSON.stringify(updatedHistory));
-
-    fetchHistory();
+    try {
+      await saveExamHistoryToCloud({
+        examId: examData.id,
+        title: examData.title,
+        score: scoreCount,
+        total: examData.questions.length,
+        wrongDetails
+      });
+      fetchHistory();
+    } catch (error) {
+      console.error("Lỗi lưu lịch sử lên Supabase:", error);
+    }
   };
 
   const handleCreateFromCurrentMistakes = async () => {
     const wrongQs = examData.questions.filter(q => answers[q.id] !== q.correct_ans);
-    const newTitle = window.prompt("Vui lòng nhập tên cho đề ôn tập:", `Ôn tập câu sai - ${examData.title}`);
+    const newTitle = window.prompt("Vui lòng nhập tên cho đề ôn tập (lưu vào Học phần của tôi):", `Ôn tập câu sai - ${examData.title}`);
     if (!newTitle || !newTitle.trim()) return;
 
     const rawText = wrongQs.map(q =>
@@ -74,8 +71,12 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
     ).join('\n');
 
     try {
-      await api.post("/exams/import", { title: newTitle.trim(), raw_text: rawText });
-      toast.success(`Đã tạo thành công đề thi: ${newTitle.trim()}`);
+      await api.post("/exams/import", {
+        title: newTitle.trim(),
+        raw_text: rawText,
+        is_system: false // Luôn lưu đề câu sai vào Note riêng của User
+      });
+      toast.success(`Đã tạo Note ôn tập câu sai: ${newTitle.trim()}`);
       backToList();
       window.scrollTo(0, 0);
     } catch (error) {

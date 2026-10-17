@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import api from '../api/axiosConfig';
+import api, {
+  getCachedExamsList,
+  getCachedExamById,
+  getCachedHistory,
+  fetchExamHistoryFromCloud,
+  clearExamHistoryOnCloud
+} from '../api/axiosConfig';
 import { toast } from 'react-toastify';
 import ExamList from './ExamList';
 import ExamTaking from './ExamTaking';
@@ -8,17 +14,19 @@ import ExamImportModal from './ExamImportModal';
 import ExamSaveModal from './ExamSaveModal';
 import ExamEditForm from './ExamEditForm';
 import ExamHistoryTable from './ExamHistoryTable';
+import AdminPanel from './AdminPanel';
 
-function ExamMode() {
+function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel }) {
   const [editingExamId, setEditingExamId] = useState(null);
   const [editTitle, setEditTitle] = useState("");
   const [editQuestions, setEditQuestions] = useState([]);
 
-  const [exams, setExams] = useState([]);
+  // Khởi tạo từ Cache trước để chuyển màn hình 0ms không bị khựng
+  const [exams, setExams] = useState(() => getCachedExamsList());
   const [examData, setExamData] = useState(null);
   const [isInstantFeedback, setIsInstantFeedback] = useState(false);
 
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState(() => getCachedHistory());
   const [viewHistory, setViewHistory] = useState(null);
 
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -27,7 +35,7 @@ function ExamMode() {
 
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => getCachedExamsList().length === 0);
 
   const handleCopyQuestion = (q) => {
     const textToCopy = `${q.question}\nA. ${q.options[0]}\nB. ${q.options[1]}\nC. ${q.options[2]}\nD. ${q.options[3]}`;
@@ -36,12 +44,20 @@ function ExamMode() {
     });
   };
 
-  const fetchHistory = () => {
-    const historyData = JSON.parse(localStorage.getItem('scofieldExamHistory') || '[]');
-    setHistory(historyData);
+  const fetchHistory = async () => {
+    const cached = getCachedHistory();
+    if (cached.length > 0) setHistory(cached);
+    try {
+      const cloudHistory = await fetchExamHistoryFromCloud();
+      setHistory(cloudHistory);
+    } catch (error) {
+      console.error("Lỗi đồng bộ lịch sử:", error);
+    }
   };
 
   const fetchExamsList = async () => {
+    const cached = getCachedExamsList();
+    if (cached.length > 0) setExams(cached);
     try {
       const res = await api.get("/exams");
       setExams(res.data);
@@ -53,20 +69,25 @@ function ExamMode() {
   useEffect(() => {
     fetchExamsList().finally(() => setIsLoading(false));
     fetchHistory();
-  }, []);
+  }, [user?.id]);
 
-  const handleClearHistory = () => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử làm bài trên tên miền này?")) {
-      localStorage.removeItem('scofieldExamHistory');
-      setHistory([]);
-      toast.success("Đã xóa lịch sử thành công!");
+  const handleClearHistory = async () => {
+    if (window.confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử làm bài của tài khoản này?")) {
+      try {
+        await clearExamHistoryOnCloud();
+        setHistory([]);
+        toast.success("Đã xóa lịch sử thành công!");
+      } catch {
+        toast.error("Lỗi khi xóa lịch sử làm bài!");
+      }
     }
   };
 
   const handleEditClick = async (examId) => {
     try {
-      const res = await api.get(`/exams/${examId}`);
-      const data = res.data;
+      // Phản hồi 0ms nếu đề thi đã có trong sessionStorage
+      const cached = getCachedExamById(examId);
+      const data = cached || (await api.get(`/exams/${examId}`)).data;
       setEditTitle(data.title);
 
       const formattedQuestions = data.questions.map(q => ({
@@ -162,10 +183,16 @@ function ExamMode() {
 
   const startExam = async (examId) => {
     try {
+      // Mở ngay trong 0ms nếu đã có trong sessionStorage
+      const cached = getCachedExamById(examId);
+      if (cached) {
+        setExamData(cached);
+        return;
+      }
       const res = await api.get(`/exams/${examId}`);
       setExamData(res.data);
     } catch (error) {
-      console.error("Lỗi lấy chi tiết đề thi:", error);
+      toast.error(error.response?.data?.detail || "Không thể mở đề thi này!");
     }
   };
 
@@ -208,6 +235,7 @@ function ExamMode() {
         raw_text: newRawText
       });
       toast.success(`Đã lưu câu hỏi vào [${exam.title}]`);
+      fetchExamsList();
       closeSaveModal();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Lỗi khi lưu câu hỏi!");
@@ -220,9 +248,10 @@ function ExamMode() {
       const rawLine = `${questionToSave.question} | ${questionToSave.options[0]} | ${questionToSave.options[1]} | ${questionToSave.options[2]} | ${questionToSave.options[3]} | ${questionToSave.correct_ans}`;
       await api.post("/exams/import", {
         title: newSaveTitle.trim(),
-        raw_text: rawLine
+        raw_text: rawLine,
+        is_system: false // Luôn lưu vào Học phần cá nhân (Note)
       });
-      toast.success(`Đã tạo [${newSaveTitle.trim()}] và lưu câu hỏi thành công!`);
+      toast.success(`Đã tạo Note [${newSaveTitle.trim()}] và lưu câu hỏi thành công!`);
       fetchExamsList();
       closeSaveModal();
     } catch (error) {
@@ -298,7 +327,7 @@ function ExamMode() {
   if (examData) {
     return (
       <>
-        <ExamSaveModal show={showSaveModal} onClose={closeSaveModal} newSaveTitle={newSaveTitle} setNewSaveTitle={setNewSaveTitle} saveToNew={saveToNew} saveToExisting={saveToExisting} exams={exams} />
+        <ExamSaveModal show={showSaveModal} onClose={closeSaveModal} newSaveTitle={newSaveTitle} setNewSaveTitle={setNewSaveTitle} saveToNew={saveToNew} saveToExisting={saveToExisting} exams={exams} profile={profile} />
         <ExamTaking
           examData={examData}
           isInstantFeedback={isInstantFeedback}
@@ -312,7 +341,15 @@ function ExamMode() {
   }
 
   return (
-    <div className="container mt-5" style={{ maxWidth: '900px' }}>
+    <div className="container mt-4" style={{ maxWidth: '900px' }}>
+      {profile?.role === 'admin' && (
+        <AdminPanel
+          show={showAdminPanel}
+          onClose={() => setShowAdminPanel(false)}
+          systemExams={exams.filter(e => e.is_system)}
+        />
+      )}
+
       <ExamImportModal show={showImportModal} onClose={() => setShowImportModal(false)} importText={importText} setImportText={setImportText} onImport={handleImportToEdit} />
 
       {editingExamId ? (
@@ -324,6 +361,8 @@ function ExamMode() {
         />
       ) : (
         <ExamList
+          user={user}
+          profile={profile}
           exams={exams} fetchExamsList={fetchExamsList} fetchHistory={fetchHistory} startExam={startExam}
           handleEditClick={handleEditClick} handleDeleteExam={handleDeleteExam}
           isInstantFeedback={isInstantFeedback} setIsInstantFeedback={setIsInstantFeedback}

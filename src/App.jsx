@@ -1,18 +1,130 @@
-import { ToastContainer } from 'react-toastify';
+import React, { useState, useEffect } from 'react';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import ExamMode from './components/ExamMode';
+import LoginScreen from './components/LoginScreen';
+import { supabase } from './api/supabaseClient';
+import { clearAllExamCaches } from './api/axiosConfig';
 
 function App() {
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+
+  const fetchUserProfile = async (currentUser) => {
+    if (!currentUser) {
+      setProfile(null);
+      return;
+    }
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', currentUser.id)
+      .single();
+
+    if (data && data.is_active === false) {
+      await supabase.auth.signOut();
+      clearAllExamCaches();
+      setUser(null);
+      setProfile(null);
+      toast.error('Tài khoản của bạn đã bị khóa!');
+      return;
+    }
+
+    setProfile(
+      data || {
+        id: currentUser.id,
+        username: currentUser.email?.split('@')[0] || 'user',
+        full_name: currentUser.user_metadata?.full_name || '',
+        role: currentUser.user_metadata?.role || 'user',
+        is_active: true,
+      }
+    );
+  };
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      fetchUserProfile(currentUser).finally(() => setAuthChecking(false));
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        fetchUserProfile(currentUser);
+      } else {
+        setProfile(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    clearAllExamCaches();
+    await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
+    toast.info('Đã đăng xuất!');
+  };
+
   return (
     <div className="container-fluid py-3" style={{ maxWidth: '1140px' }}>
-      <header className="text-center mb-3">
-        <h1 className="fw-bold fs-3 gradient-text d-flex align-items-center justify-content-center gap-2 mb-1">
-          <img src="/sea_15651557.ico" alt="logo" style={{ width: '34px', height: '34px', objectFit: 'contain' }} />
-          Thi Trắc Nghiệm
-        </h1>
-        <p className="text-muted small mb-0">Phiên bản Offline Mobile — Lưu trữ JSON</p>
+      <header className="mb-3">
+        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 bg-white p-3 rounded-4 shadow-sm">
+          <div className="d-flex align-items-center gap-2">
+            <img src="/sea_15651557.ico" alt="logo" style={{ width: '36px', height: '36px', objectFit: 'contain' }} />
+            <div>
+              <h1 className="fw-bold fs-4 gradient-text mb-0">Thi Trắc Nghiệm</h1>
+              <p className="text-muted small mb-0">Đồng bộ đám mây tốc độ cao</p>
+            </div>
+          </div>
+
+          {user && profile && (
+            <div className="d-flex align-items-center flex-wrap gap-2">
+              <span className="badge bg-accent-light text-dark px-3 py-2 rounded-pill">
+                👤 {profile.full_name || profile.username}{' '}
+                <strong style={{ color: 'var(--accent)' }}>
+                  ({profile.role === 'admin' ? 'Admin' : 'Học viên'})
+                </strong>
+              </span>
+
+              {profile.role === 'admin' && (
+                <button
+                  className="btn btn-warning btn-mobile-chip text-dark"
+                  onClick={() => setShowAdminPanel(true)}
+                >
+                  🛡️ Quản trị viên
+                </button>
+              )}
+
+              <button className="btn btn-outline-danger btn-mobile-chip" onClick={handleLogout}>
+                🚪 Đăng xuất
+              </button>
+            </div>
+          )}
+        </div>
       </header>
-      <ExamMode />
+
+      {authChecking ? null : !user ? (
+        <LoginScreen
+          onLoginSuccess={(loggedUser, loggedProfile) => {
+            setUser(loggedUser);
+            if (loggedProfile) setProfile(loggedProfile);
+          }}
+        />
+      ) : (
+        <ExamMode
+          user={user}
+          profile={profile}
+          showAdminPanel={showAdminPanel}
+          setShowAdminPanel={setShowAdminPanel}
+        />
+      )}
+
       <ToastContainer position="top-center" autoClose={2200} theme="colored" hideProgressBar />
     </div>
   );

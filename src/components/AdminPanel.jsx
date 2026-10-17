@@ -1,0 +1,468 @@
+import React, { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
+import { supabase, tempSupabaseAdminClient, formatLoginEmail } from '../api/supabaseClient';
+
+function AdminPanel({ show, onClose, systemExams = [] }) {
+  const [activeTab, setActiveTab] = useState('create'); // 'create' | 'users'
+  const [username, setUsername] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [password, setPassword] = useState('');
+  const [selectedNewUserExams, setSelectedNewUserExams] = useState([]);
+  const [creating, setCreating] = useState(false);
+
+  const [users, setUsers] = useState([]);
+  const [assignmentsMap, setAssignmentsMap] = useState({}); // { [userId]: Set(examId) }
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+
+  const fetchUsersAndAssignments = async () => {
+    setLoadingUsers(true);
+    try {
+      const [profilesRes, assignRes] = await Promise.all([
+        supabase.from('profiles').select('*').order('username', { ascending: true }),
+        supabase.from('exam_assignments').select('user_id, exam_id'),
+      ]);
+
+      if (profilesRes.error) throw profilesRes.error;
+      if (assignRes.error) throw assignRes.error;
+
+      setUsers(profilesRes.data || []);
+
+      const map = {};
+      (assignRes.data || []).forEach((row) => {
+        if (!map[row.user_id]) map[row.user_id] = [];
+        map[row.user_id].push(Number(row.exam_id));
+      });
+      setAssignmentsMap(map);
+    } catch (err) {
+      toast.error('Lỗi tải danh sách học viên: ' + (err.message || ''));
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (show) {
+      fetchUsersAndAssignments();
+    }
+  }, [show]);
+
+  if (!show) return null;
+
+  const toggleNewUserExam = (examId) => {
+    const id = Number(examId);
+    setSelectedNewUserExams((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllNewUserExams = () => {
+    if (selectedNewUserExams.length === systemExams.length) {
+      setSelectedNewUserExams([]);
+    } else {
+      setSelectedNewUserExams(systemExams.map((e) => Number(e.id)));
+    }
+  };
+
+  const handleCreateStudent = async (e) => {
+    e.preventDefault();
+    const cleanUsername = username.trim().toLowerCase();
+    const cleanFullName = fullName.trim();
+
+    if (!cleanUsername || !password) {
+      return toast.warning('Vui lòng nhập Username và Mật khẩu!');
+    }
+    if (password.length < 6) {
+      return toast.warning('Mật khẩu phải có tối thiểu 6 ký tự!');
+    }
+
+    setCreating(true);
+    try {
+      const email = formatLoginEmail(cleanUsername);
+
+      // Dùng tempSupabaseAdminClient để không làm văng phiên đăng nhập hiện tại của Admin
+      const { data, error } = await tempSupabaseAdminClient.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username: cleanUsername,
+            full_name: cleanFullName || cleanUsername,
+            role: 'user',
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      const newUserId = data?.user?.id;
+      if (!newUserId) {
+        throw new Error('Không lấy được ID tài khoản mới tạo.');
+      }
+
+      // Đảm bảo thông tin profile đầy đủ
+      await supabase.from('profiles').upsert({
+        id: newUserId,
+        username: cleanUsername,
+        full_name: cleanFullName || cleanUsername,
+        role: 'user',
+        is_active: true,
+      });
+
+      // Cấp quyền ngay các học phần đã tích chọn
+      if (selectedNewUserExams.length > 0) {
+        const rows = selectedNewUserExams.map((examId) => ({
+          user_id: newUserId,
+          exam_id: Number(examId),
+        }));
+        const { error: assignErr } = await supabase.from('exam_assignments').insert(rows);
+        if (assignErr) throw assignErr;
+      }
+
+      toast.success(`Đã tạo tài khoản [${cleanUsername}] và cấp ${selectedNewUserExams.length} học phần!`);
+      setUsername('');
+      setFullName('');
+      setPassword('');
+      setSelectedNewUserExams([]);
+      fetchUsersAndAssignments();
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi tạo tài khoản học viên!');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleToggleAssignment = async (userId, examId) => {
+    const numericExamId = Number(examId);
+    const currentList = assignmentsMap[userId] || [];
+    const isAssigned = currentList.includes(numericExamId);
+
+    // Optimistic UI update
+    const updatedList = isAssigned
+      ? currentList.filter((id) => id !== numericExamId)
+      : [...currentList, numericExamId];
+
+    setAssignmentsMap({
+      ...assignmentsMap,
+      [userId]: updatedList,
+    });
+
+    try {
+      if (isAssigned) {
+        const { error } = await supabase
+          .from('exam_assignments')
+          .delete()
+          .eq('user_id', userId)
+          .eq('exam_id', numericExamId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('exam_assignments')
+          .insert([{ user_id: userId, exam_id: numericExamId }]);
+        if (error) throw error;
+      }
+    } catch (err) {
+      // Rollback nếu lỗi
+      setAssignmentsMap({
+        ...assignmentsMap,
+        [userId]: currentList,
+      });
+      toast.error('Lỗi cập nhật phân quyền: ' + (err.message || ''));
+    }
+  };
+
+  const handleToggleUserActive = async (targetUser) => {
+    const nextState = !targetUser.is_active;
+    setUsers((prev) =>
+      prev.map((u) => (u.id === targetUser.id ? { ...u, is_active: nextState } : u))
+    );
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_active: nextState })
+      .eq('id', targetUser.id);
+
+    if (error) {
+      toast.error('Không thể cập nhật trạng thái tài khoản!');
+      fetchUsersAndAssignments();
+    } else {
+      toast.info(`Đã ${nextState ? 'mở khóa' : 'khóa'} tài khoản ${targetUser.username}`);
+    }
+  };
+
+  return (
+    <div className="modal d-block modal-backdrop-blur" style={{ zIndex: 1060, padding: '10px' }}>
+      <div className="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable modal-fullscreen-md-down">
+        <div className="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
+          <div className="modal-header modal-header-gradient">
+            <h5 className="modal-title fw-bold">🛡️ Quản Trị Học Viên & Phân Quyền Học Phần</h5>
+            <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
+          </div>
+
+          <div className="modal-body bg-light p-3 p-md-4">
+            {/* Thanh chuyển Tab trong Admin Panel */}
+            <div className="d-flex gap-2 mb-4">
+              <button
+                type="button"
+                className={`btn flex-grow-1 mobile-btn-tile ${
+                  activeTab === 'create' ? 'btn-accent' : 'btn-light border bg-white text-dark'
+                }`}
+                onClick={() => {
+                  setActiveTab('create');
+                  setEditingUser(null);
+                }}
+              >
+                ➕ Cấp tài khoản mới
+              </button>
+              <button
+                type="button"
+                className={`btn flex-grow-1 mobile-btn-tile ${
+                  activeTab === 'users' ? 'btn-accent' : 'btn-light border bg-white text-dark'
+                }`}
+                onClick={() => setActiveTab('users')}
+              >
+                👥 Danh sách học viên ({users.filter((u) => u.role !== 'admin').length})
+              </button>
+            </div>
+
+            {activeTab === 'create' ? (
+              <form onSubmit={handleCreateStudent} className="bg-white p-3 p-md-4 rounded-4 shadow-sm">
+                <h6 className="fw-bold text-primary mb-3">1. Thông tin đăng nhập học viên</h6>
+                <div className="row g-3 mb-4">
+                  <div className="col-12 col-md-4">
+                    <label className="form-label small fw-bold text-muted">Username (*)</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="VD: nguyenvana"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="col-12 col-md-4">
+                    <label className="form-label small fw-bold text-muted">Họ và tên</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="VD: Nguyễn Văn A"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                    />
+                  </div>
+                  <div className="col-12 col-md-4">
+                    <label className="form-label small fw-bold text-muted">Mật khẩu (*)</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Tối thiểu 6 ký tự"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <h6 className="fw-bold text-primary mb-0">
+                    2. Chọn học phần cấp ngay ({selectedNewUserExams.length}/{systemExams.length})
+                  </h6>
+                  {systemExams.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary"
+                      onClick={handleSelectAllNewUserExams}
+                    >
+                      {selectedNewUserExams.length === systemExams.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                    </button>
+                  )}
+                </div>
+
+                <div
+                  className="list-group mb-4 border rounded-3"
+                  style={{ maxHeight: '240px', overflowY: 'auto' }}
+                >
+                  {systemExams.length === 0 ? (
+                    <div className="text-center py-4 text-muted small">
+                      Chưa có học phần hệ thống nào. Hãy tạo đề ở tab "🎓 Học phần được cấp" trước!
+                    </div>
+                  ) : (
+                    systemExams.map((exam) => {
+                      const checked = selectedNewUserExams.includes(Number(exam.id));
+                      return (
+                        <label
+                          key={exam.id}
+                          className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <div className="d-flex align-items-center gap-2 text-truncate pe-2">
+                            <input
+                              type="checkbox"
+                              className="form-check-input mt-0"
+                              checked={checked}
+                              onChange={() => toggleNewUserExam(exam.id)}
+                            />
+                            <span className="fw-semibold text-truncate">{exam.title}</span>
+                          </div>
+                          <span className="badge bg-accent-light text-dark rounded-pill">
+                            {exam.questionCount || 0} câu
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-accent w-100 mobile-btn-tile"
+                  disabled={creating}
+                >
+                  {creating ? '⏳ Đang khởi tạo tài khoản...' : '✅ Tạo Tài Khoản & Cấp Học Phần'}
+                </button>
+              </form>
+            ) : (
+              <div>
+                {editingUser ? (
+                  <div className="bg-white p-3 p-md-4 rounded-4 shadow-sm animate-in">
+                    <div className="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
+                      <div>
+                        <h6 className="fw-bold mb-0 text-primary">
+                          🎓 Phân quyền học phần cho: {editingUser.full_name || editingUser.username}
+                        </h6>
+                        <small className="text-muted">@{editingUser.username}</small>
+                      </div>
+                      <button
+                        className="btn btn-secondary btn-mobile-chip"
+                        onClick={() => setEditingUser(null)}
+                      >
+                        ← Quay lại
+                      </button>
+                    </div>
+
+                    {systemExams.length === 0 ? (
+                      <p className="text-muted text-center py-3 mb-0">
+                        Chưa có học phần hệ thống nào để phân quyền.
+                      </p>
+                    ) : (
+                      <div className="list-group">
+                        {systemExams.map((exam) => {
+                          const userExams = assignmentsMap[editingUser.id] || [];
+                          const isChecked = userExams.includes(Number(exam.id));
+                          return (
+                            <label
+                              key={exam.id}
+                              className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center rounded-3 mb-2 border ${
+                                isChecked ? 'border-primary bg-accent-light' : ''
+                              }`}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              <div className="d-flex align-items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  className="form-check-input mt-0"
+                                  style={{ width: '20px', height: '20px' }}
+                                  checked={isChecked}
+                                  onChange={() => handleToggleAssignment(editingUser.id, exam.id)}
+                                />
+                                <div>
+                                  <div className="fw-bold text-dark">{exam.title}</div>
+                                  <small className="text-muted">{exam.questionCount || 0} câu hỏi</small>
+                                </div>
+                              </div>
+                              <span
+                                className={`badge rounded-pill ${
+                                  isChecked ? 'bg-success' : 'bg-secondary'
+                                }`}
+                              >
+                                {isChecked ? 'Đã cấp' : 'Chưa cấp'}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-4 shadow-sm overflow-hidden">
+                    {loadingUsers ? (
+                      <div className="text-center py-5 text-muted">⏳ Đang tải danh sách học viên...</div>
+                    ) : users.length === 0 ? (
+                      <div className="text-center py-5 text-muted">Chưa có tài khoản học viên nào.</div>
+                    ) : (
+                      <div className="table-responsive">
+                        <table className="table table-hover align-middle mb-0">
+                          <thead className="table-light">
+                            <tr>
+                              <th className="ps-3">Tài khoản</th>
+                              <th>Vai trò</th>
+                              <th className="text-center">Số học phần</th>
+                              <th className="text-end pe-3">Thao tác</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {users.map((u) => {
+                              const assignedCount = (assignmentsMap[u.id] || []).length;
+                              return (
+                                <tr key={u.id}>
+                                  <td className="ps-3">
+                                    <div className="fw-bold">{u.full_name || u.username}</div>
+                                    <small className="text-muted">@{u.username}</small>
+                                  </td>
+                                  <td>
+                                    <span
+                                      className={`badge rounded-pill ${
+                                        u.role === 'admin' ? 'bg-danger' : 'bg-info text-dark'
+                                      }`}
+                                    >
+                                      {u.role === 'admin' ? 'Admin' : 'Học viên'}
+                                    </span>
+                                  </td>
+                                  <td className="text-center">
+                                    {u.role === 'admin' ? (
+                                      <span className="badge bg-success rounded-pill">Toàn quyền</span>
+                                    ) : (
+                                      <span className="badge bg-primary rounded-pill">
+                                        {assignedCount} đề
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="text-end pe-3">
+                                    {u.role !== 'admin' && (
+                                      <div className="d-inline-flex gap-2">
+                                        <button
+                                          className="btn btn-sm btn-outline-primary fw-bold"
+                                          onClick={() => setEditingUser(u)}
+                                        >
+                                          🎓 Phân quyền học phần
+                                        </button>
+                                        <button
+                                          className={`btn btn-sm ${
+                                            u.is_active ? 'btn-outline-danger' : 'btn-success'
+                                          }`}
+                                          onClick={() => handleToggleUserActive(u)}
+                                        >
+                                          {u.is_active ? '🔒 Khóa' : '🔓 Mở'}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default AdminPanel;
