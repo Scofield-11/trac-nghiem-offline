@@ -19,7 +19,9 @@ import AdminPanel from './AdminPanel';
 function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigger, onReportsChanged, onFocusModeChange }) {
   const [editingExamId, setEditingExamId] = useState(null);
   const [editTitle, setEditTitle] = useState("");
+  const [editSubject, setEditSubject] = useState("Chưa phân loại");
   const [editQuestions, setEditQuestions] = useState([]);
+  const [selectedSubject, setSelectedSubject] = useState(null);
 
   // Khởi tạo từ Cache trước để chuyển màn hình 0ms không bị khựng
   const [exams, setExams] = useState(() => getCachedExamsList());
@@ -99,6 +101,7 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
       const cached = getCachedExamById(examId);
       const data = cached || (await api.get(`/exams/${examId}`)).data;
       setEditTitle(data.title);
+      setEditSubject(data.subject || "Chưa phân loại");
 
       const formattedQuestions = data.questions.map(q => ({
         question: q.question,
@@ -168,10 +171,16 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
 
   const handleSaveEdit = async () => {
     if (!editTitle.trim()) return toast.warning("Tên bài thi không được để trống!");
+    const cleanSubject = editSubject.trim() || "Chưa phân loại";
     const raw = editQuestions.map(q => `${q.question} | ${q.options[0]} | ${q.options[1]} | ${q.options[2]} | ${q.options[3]} | ${q.correct_ans}`).join('\n');
     try {
-      await api.put(`/exams/${editingExamId}`, { title: editTitle, raw_text: raw });
+      await api.put(`/exams/${editingExamId}`, {
+        title: editTitle,
+        subject: cleanSubject,
+        raw_text: raw
+      });
       toast.success("Cập nhật bài test thành công!");
+      setSelectedSubject(cleanSubject);
       setEditingExamId(null);
       fetchExamsList();
     } catch (error) {
@@ -255,13 +264,15 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
   const saveToNew = async () => {
     if (!newSaveTitle.trim()) return toast.warning("Vui lòng nhập tên đề thi mới!");
     try {
+      const inheritedSubject = examData?.subject || selectedSubject || "Chưa phân loại";
       const rawLine = `${questionToSave.question} | ${questionToSave.options[0]} | ${questionToSave.options[1]} | ${questionToSave.options[2]} | ${questionToSave.options[3]} | ${questionToSave.correct_ans}`;
       await api.post("/exams/import", {
         title: newSaveTitle.trim(),
+        subject: inheritedSubject,
         raw_text: rawLine,
-        is_system: false // Luôn lưu vào Học phần cá nhân (Note)
+        is_system: false // Luôn lưu vào Học phần cá nhân (Note) cùng Môn học
       });
-      toast.success(`Đã tạo Note [${newSaveTitle.trim()}] và lưu câu hỏi thành công!`);
+      toast.success(`Đã tạo Note [${newSaveTitle.trim()}] trong môn [${inheritedSubject}]!`);
       fetchExamsList();
       closeSaveModal();
     } catch (error) {
@@ -366,7 +377,10 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
 
       {editingExamId ? (
         <ExamEditForm
-          editTitle={editTitle} setEditTitle={setEditTitle} editQuestions={editQuestions}
+          editTitle={editTitle} setEditTitle={setEditTitle}
+          editSubject={editSubject} setEditSubject={setEditSubject}
+          existingSubjects={Array.from(new Set(exams.map(e => e.subject || 'Chưa phân loại')))}
+          editQuestions={editQuestions}
           handleDeleteQuestion={handleDeleteQuestion} handleUpdateQuestion={handleUpdateQuestion}
           handleAddNewQuestionToEdit={handleAddNewQuestionToEdit} setShowImportModal={setShowImportModal}
           handleSaveEdit={handleSaveEdit} setEditingExamId={setEditingExamId}
@@ -378,6 +392,7 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
           exams={exams} fetchExamsList={fetchExamsList} fetchHistory={fetchHistory} startExam={startExam}
           handleEditClick={handleEditClick} handleDeleteExam={handleDeleteExam}
           isInstantFeedback={isInstantFeedback} setIsInstantFeedback={setIsInstantFeedback}
+          selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject}
         />
       )}
 

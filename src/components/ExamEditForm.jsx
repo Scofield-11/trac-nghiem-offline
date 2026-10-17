@@ -2,7 +2,7 @@ import React from 'react';
 import * as XLSX from 'xlsx';
 import { exportSingleExamToJson } from '../api/axiosConfig';
 
-function ExamEditForm({ editTitle, setEditTitle, editQuestions, handleDeleteQuestion, handleUpdateQuestion, handleAddNewQuestionToEdit, setShowImportModal, handleSaveEdit, setEditingExamId }) {
+function ExamEditForm({ editTitle, setEditTitle, editSubject, setEditSubject, existingSubjects = [], editQuestions, handleDeleteQuestion, handleUpdateQuestion, handleAddNewQuestionToEdit, setShowImportModal, handleSaveEdit, setEditingExamId }) {
   const handleExportText = () => {
     const rawText = editQuestions.map(q => `${q.question} | ${q.options[0]} | ${q.options[1]} | ${q.options[2]} | ${q.options[3]} | ${q.correct_ans}`).join('\n');
     const blob = new Blob([rawText], { type: 'text/plain;charset=utf-8' });
@@ -40,20 +40,39 @@ function ExamEditForm({ editTitle, setEditTitle, editQuestions, handleDeleteQues
       </div>
 
       <div className="card-body bg-light p-3">
-        <label className="fw-bold small text-muted mb-1">Tên đề thi:</label>
-        <input
-          className="form-control form-control-lg mb-3 fw-bold text-primary rounded-3"
-          placeholder="Tên bài thi..."
-          value={editTitle}
-          onChange={e => setEditTitle(e.target.value)}
-        />
+        <div className="row g-2 mb-3">
+          <div className="col-12 col-md-5">
+            <label className="fw-bold small text-muted mb-1">📁 Môn học (Folder):</label>
+            <input
+              className="form-control form-control-lg fw-bold rounded-3"
+              list="edit-subjects-datalist"
+              placeholder="Nhập hoặc chọn môn học..."
+              value={editSubject}
+              onChange={e => setEditSubject(e.target.value)}
+            />
+            <datalist id="edit-subjects-datalist">
+              {existingSubjects.map(subj => (
+                <option key={subj} value={subj} />
+              ))}
+            </datalist>
+          </div>
+          <div className="col-12 col-md-7">
+            <label className="fw-bold small text-muted mb-1">📄 Tên học phần / Đề thi:</label>
+            <input
+              className="form-control form-control-lg fw-bold text-primary rounded-3"
+              placeholder="Tên bài thi..."
+              value={editTitle}
+              onChange={e => setEditTitle(e.target.value)}
+            />
+          </div>
+        </div>
 
         {/* Lưới nút Xuất / Nhập nhanh cho đề thi này */}
         <div className="mobile-action-grid edit-action-grid mb-4">
           <button className="btn btn-outline-primary mobile-btn-tile bg-white" onClick={() => setShowImportModal(true)}>
             📋 Dán thêm câu
           </button>
-          <button className="btn btn-outline-warning mobile-btn-tile bg-white text-dark" onClick={() => exportSingleExamToJson(editTitle, editQuestions)}>
+          <button className="btn btn-outline-warning mobile-btn-tile bg-white text-dark" onClick={() => exportSingleExamToJson(editTitle, editQuestions, editSubject)}>
             📦 Xuất JSON
           </button>
           <button className="btn btn-outline-info mobile-btn-tile bg-white text-dark" onClick={handleExportText}>

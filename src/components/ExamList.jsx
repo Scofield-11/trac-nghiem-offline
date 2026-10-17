@@ -1,14 +1,33 @@
 import React, { useState, useRef } from 'react';
 import { toast } from 'react-toastify';
-import api, { exportAllDataToJson, importDataFromJsonFile } from '../api/axiosConfig';
+import api, {
+  exportAllDataToJson,
+  importDataFromJsonFile,
+  renameSubjectFolder
+} from '../api/axiosConfig';
 import EmptyState from './EmptyState';
 
-function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExam, handleEditClick, handleDeleteExam, isInstantFeedback, setIsInstantFeedback }) {
+function ExamList({
+  user,
+  profile,
+  exams,
+  fetchExamsList,
+  fetchHistory,
+  startExam,
+  handleEditClick,
+  handleDeleteExam,
+  isInstantFeedback,
+  setIsInstantFeedback,
+  selectedSubject,
+  setSelectedSubject
+}) {
   const [rawText, setRawText] = useState("");
   const [title, setTitle] = useState("");
+  const [subjectInput, setSubjectInput] = useState("");
   const [showCreateBox, setShowCreateBox] = useState(false);
   const [activeTab, setActiveTab] = useState("system"); // 'system' | 'personal'
   const fileInputRef = useRef(null);
+  const titleInputRef = useRef(null);
   const rawTextInputRef = useRef(null);
 
   const isAdmin = profile?.role === 'admin';
@@ -18,26 +37,57 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
   const personalExams = exams.filter(e => !e.is_system && (!user || e.owner_id === user.id));
   const displayedExams = activeTab === 'system' ? systemExams : personalExams;
 
+  // Gom nhóm học phần thành các Thư mục Môn học (Folder)
+  const subjectGroupsMap = displayedExams.reduce((acc, exam) => {
+    const subjName = (exam.subject && String(exam.subject).trim()) || 'Chưa phân loại';
+    if (!acc[subjName]) {
+      acc[subjName] = { name: subjName, exams: [], totalQuestions: 0 };
+    }
+    acc[subjName].exams.push(exam);
+    acc[subjName].totalQuestions += Number(exam.questionCount || 0);
+    return acc;
+  }, {});
+
+  const subjectFolders = Object.values(subjectGroupsMap).sort((a, b) =>
+    a.name.localeCompare(b.name, 'vi')
+  );
+
+  const activeFolderExams = selectedSubject
+    ? subjectGroupsMap[selectedSubject]?.exams || []
+    : [];
+
   // Chỉ hiển thị thanh công cụ Tạo đề / Nhập JSON ở Tab 2 (Note của tôi), hoặc ở Tab 1 nếu là Admin
   const canManageCurrentTab = activeTab === 'personal' || isAdmin;
   const isCreatingSystemExam = isAdmin && activeTab === 'system';
 
+  const handleOpenCreateBox = (prefillSubject = "") => {
+    if (!showCreateBox) {
+      setSubjectInput(prefillSubject || selectedSubject || "");
+    }
+    setShowCreateBox(!showCreateBox);
+  };
+
   const handleCreate = async () => {
-    if (!title.trim() || !rawText.trim()) return toast.warning("Vui lòng nhập đủ tên và nội dung bài test!");
+    if (!title.trim() || !rawText.trim()) {
+      return toast.warning("Vui lòng nhập đủ tên học phần và nội dung câu hỏi!");
+    }
+    const targetSubject = subjectInput.trim() || selectedSubject || "Chưa phân loại";
     try {
       await api.post("/exams/import", {
         title,
+        subject: targetSubject,
         raw_text: rawText,
         is_system: isCreatingSystemExam
       });
       toast.success(
         isCreatingSystemExam
-          ? "Đã tạo Học phần hệ thống thành công!"
-          : "Đã tạo Học phần cá nhân (Note) thành công!"
+          ? `Đã tạo học phần vào môn [${targetSubject}]!`
+          : `Đã tạo Note vào môn [${targetSubject}]!`
       );
       setRawText("");
       setTitle("");
       setShowCreateBox(false);
+      setSelectedSubject(targetSubject);
       fetchExamsList();
     } catch (error) {
       const detail = error.response?.data?.detail;
@@ -46,11 +96,30 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
     }
   };
 
+  const handleRenameFolder = async (folderName) => {
+    const nextName = window.prompt("Nhập tên mới cho môn học (Folder) này:", folderName);
+    if (!nextName || !nextName.trim() || nextName.trim() === folderName) return;
+    try {
+      await renameSubjectFolder(folderName, nextName.trim(), activeTab === 'system');
+      toast.success(`Đã đổi tên môn học thành "${nextName.trim()}"!`);
+      if (selectedSubject === folderName) {
+        setSelectedSubject(nextName.trim());
+      }
+      fetchExamsList();
+    } catch (err) {
+      toast.error(err.message || "Không thể đổi tên môn học!");
+    }
+  };
+
   const handleJsonImport = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const res = await importDataFromJsonFile(file, isCreatingSystemExam);
+      const res = await importDataFromJsonFile(
+        file,
+        isCreatingSystemExam,
+        selectedSubject || "Chưa phân loại"
+      );
       toast.success(`Đã thêm ${res.addedExams} đề thi từ file JSON!`);
       fetchExamsList();
       if (fetchHistory) fetchHistory();
@@ -70,6 +139,7 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
           className={`btn mobile-tab-btn ${activeTab === 'system' ? 'active' : ''}`}
           onClick={() => {
             setActiveTab('system');
+            setSelectedSubject(null);
             setShowCreateBox(false);
           }}
         >
@@ -79,14 +149,18 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
         <button
           type="button"
           className={`btn mobile-tab-btn ${activeTab === 'personal' ? 'active' : ''}`}
-          onClick={() => setActiveTab('personal')}
+          onClick={() => {
+            setActiveTab('personal');
+            setSelectedSubject(null);
+            setShowCreateBox(false);
+          }}
         >
           <span>📒 Note của tôi</span>
           <span className="tab-count-badge">{personalExams.length}</span>
         </button>
       </div>
 
-      {/* Cụm nút điều khiển Tạo mới / Nhập Xuất JSON (Luôn hiện ở Tab Note cá nhân hoặc khi Admin ở Tab Hệ thống) */}
+      {/* Cụm nút điều khiển Tạo mới / Nhập Xuất JSON */}
       {canManageCurrentTab && (
         <div className="card shadow-sm p-3 mb-3 border-0 rounded-4 bg-white">
           <input
@@ -118,19 +192,19 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
 
             <button
               className={`btn w-100 mobile-btn-tile ${showCreateBox ? 'btn-secondary' : 'btn-accent'}`}
-              onClick={() => setShowCreateBox(!showCreateBox)}
+              onClick={() => handleOpenCreateBox(selectedSubject || "")}
             >
               {showCreateBox
                 ? '✖ Đóng khung tạo đề'
                 : isCreatingSystemExam
-                ? '➕ Tạo học phần Hệ thống (Admin)'
-                : '➕ Tạo Note / Học phần cá nhân mới'}
+                ? `➕ Tạo học phần Hệ thống${selectedSubject ? ` (${selectedSubject})` : ''}`
+                : `➕ Tạo Note / Học phần mới${selectedSubject ? ` (${selectedSubject})` : ''}`}
             </button>
           </div>
         </div>
       )}
 
-      {/* Khung tạo đề đóng/mở gọn gàng */}
+      {/* Khung tạo đề có thêm ô chọn/nhập Môn học (Folder) */}
       {canManageCurrentTab && showCreateBox && (
         <div className="card shadow-sm p-3 mb-4 border-0 rounded-4 border-accent-top animate-in">
           <h5 className="mb-2 fw-bold">
@@ -139,9 +213,37 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
           <p className="text-muted small mb-2">
             Định dạng: <code>Câu hỏi | A | B | C | D | vị trí đúng (1-4)</code>
           </p>
+
+          <label className="small fw-bold text-muted mb-1">
+            📁 Môn học (Thư mục):
+          </label>
           <input
             className="form-control mb-2 rounded-3"
-            placeholder="Nhập tên học phần..."
+            list="existing-subjects-datalist"
+            placeholder="Nhập tên môn học mới hoặc chọn môn có sẵn..."
+            value={subjectInput}
+            onChange={e => setSubjectInput(e.target.value)}
+            enterKeyHint="next"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                titleInputRef.current?.focus();
+              }
+            }}
+          />
+          <datalist id="existing-subjects-datalist">
+            {subjectFolders.map(folder => (
+              <option key={folder.name} value={folder.name} />
+            ))}
+          </datalist>
+
+          <label className="small fw-bold text-muted mb-1">
+            📄 Tên học phần / Đề thi:
+          </label>
+          <input
+            ref={titleInputRef}
+            className="form-control mb-2 rounded-3"
+            placeholder="VD: Chương 1 - Khái niệm cơ bản..."
             value={title}
             onChange={e => setTitle(e.target.value)}
             enterKeyHint="next"
@@ -166,13 +268,39 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
         </div>
       )}
 
-      {/* Thanh tiêu đề + Nút bật/tắt Hiện đáp án ngay */}
+      {/* Thanh tiêu đề + Điều hướng Folder + Nút bật/tắt Hiện đáp án ngay */}
       <div className="d-flex justify-content-between align-items-center mb-3 mt-2 flex-wrap gap-2">
-        <h5 className="m-0 fw-bold">
-          {activeTab === 'system'
-            ? `🎓 Học phần (${systemExams.length})`
-            : `📒 Học phần của tôi (${personalExams.length})`}
-        </h5>
+        {selectedSubject ? (
+          <div className="d-flex align-items-center flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-light border btn-mobile-chip text-dark"
+              onClick={() => setSelectedSubject(null)}
+            >
+              ← Tất cả môn
+            </button>
+            <h5 className="m-0 fw-bold text-break" style={{ color: 'var(--accent)' }}>
+              📂 {selectedSubject} ({activeFolderExams.length})
+            </h5>
+            {canManageCurrentTab && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary rounded-pill"
+                onClick={() => handleRenameFolder(selectedSubject)}
+                title="Đổi tên môn học này"
+              >
+                ✏️ Đổi tên môn
+              </button>
+            )}
+          </div>
+        ) : (
+          <h5 className="m-0 fw-bold">
+            {activeTab === 'system'
+              ? `📁 Môn học được cấp (${subjectFolders.length} môn • ${systemExams.length} học phần)`
+              : `📁 Tủ Note của tôi (${subjectFolders.length} môn • ${personalExams.length} học phần)`}
+          </h5>
+        )}
+
         <button
           type="button"
           className={`btn btn-mobile-chip ${isInstantFeedback ? 'btn-primary text-white shadow-sm' : 'btn-outline-secondary bg-white'}`}
@@ -184,27 +312,83 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
 
       {displayedExams.length === 0 ? (
         <EmptyState
-          title={activeTab === 'system' ? "Chưa có học phần nào" : "Chưa có Note cá nhân nào"}
+          title={activeTab === 'system' ? "Chưa có môn học / học phần nào" : "Chưa có Note cá nhân nào"}
           message={
             activeTab === 'system'
               ? (isAdmin
-                  ? "Bấm '➕ Tạo học phần Hệ thống' ở trên để thêm đề và phân quyền cho học viên!"
-                  : "Vui lòng liên hệ Admin để được cấp quyền truy cập học phần.")
-              : "Bạn có thể bấm '➕ Tạo Note', hoặc bấm '⭐ Lưu câu này' khi đang làm bài để gom câu hỏi khó về đây!"
+                  ? "Bấm '➕ Tạo học phần Hệ thống' ở trên để thêm môn học mới và phân quyền cho học viên!"
+                  : "Vui lòng liên hệ Admin để được cấp quyền truy cập môn học.")
+              : "Bạn có thể bấm '➕ Tạo Note', hoặc bấm '⭐ Lưu câu này' khi đang làm bài để gom câu hỏi khó theo từng môn về đây!"
           }
         />
-      ) : (
+      ) : !selectedSubject ? (
+        /* ================= CHẾ ĐỘ 1: HIỂN THỊ DANH SÁCH THƯ MỤC MÔN HỌC (FOLDERS) ================= */
         <div className="row g-3 mb-4">
-          {displayedExams.map(exam => {
+          {subjectFolders.map(folder => (
+            <div className="col-12 col-md-6" key={folder.name}>
+              <div
+                className="card card-hover shadow-sm border-0 h-100 rounded-4 border-accent-left bg-white"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setSelectedSubject(folder.name)}
+              >
+                <div className="card-body p-3 p-md-4 d-flex justify-content-between align-items-center gap-3">
+                  <div className="d-flex align-items-center gap-3 overflow-hidden">
+                    <div
+                      className="d-flex align-items-center justify-content-center rounded-4 bg-accent-light flex-shrink-0"
+                      style={{ width: '54px', height: '54px', fontSize: '1.65rem' }}
+                    >
+                      📁
+                    </div>
+                    <div className="overflow-hidden">
+                      <h5
+                        className="card-title fw-bold mb-1 text-truncate"
+                        style={{ color: 'var(--accent)', fontSize: '1.12rem' }}
+                      >
+                        {folder.name}
+                      </h5>
+                      <div className="text-muted small">
+                        <strong>{folder.exams.length}</strong> học phần •{' '}
+                        <strong>{folder.totalQuestions}</strong> câu hỏi
+                      </div>
+                    </div>
+                  </div>
+
+                  <span
+                    className="btn btn-light border rounded-pill fw-bold px-3 flex-shrink-0"
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    Mở →
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : activeFolderExams.length === 0 ? (
+        <div className="text-center py-4">
+          <p className="text-muted">Không còn học phần nào trong môn này.</p>
+          <button className="btn btn-accent btn-mobile-chip" onClick={() => setSelectedSubject(null)}>
+            ← Quay lại danh sách môn học
+          </button>
+        </div>
+      ) : (
+        /* ================= CHẾ ĐỘ 2: HIỂN THỊ CÁC HỌC PHẦN BÊN TRONG MÔN HỌC ĐÃ MỞ ================= */
+        <div className="row g-3 mb-4 animate-in">
+          {activeFolderExams.map(exam => {
             const canEditOrDelete = !exam.is_system || isAdmin;
             return (
               <div className="col-12 col-md-6" key={exam.id}>
                 <div className="card shadow-sm border-0 h-100 rounded-4 border-accent-left">
                   <div className="card-body p-3 d-flex flex-column justify-content-between">
                     <div className="d-flex justify-content-between align-items-start gap-2 mb-3">
-                      <h5 className="card-title fw-bold mb-0 text-break" style={{ color: 'var(--accent)', fontSize: '1.1rem' }}>
-                        {exam.title}
-                      </h5>
+                      <div>
+                        <span className="badge bg-light text-muted border mb-1">
+                          📁 {exam.subject || 'Chưa phân loại'}
+                        </span>
+                        <h5 className="card-title fw-bold mb-0 text-break" style={{ color: 'var(--accent)', fontSize: '1.1rem' }}>
+                          {exam.title}
+                        </h5>
+                      </div>
                       <span className="badge bg-accent-light text-nowrap rounded-pill px-2 py-1" style={{ color: 'var(--accent)' }}>
                         {exam.questionCount || 0} câu
                       </span>

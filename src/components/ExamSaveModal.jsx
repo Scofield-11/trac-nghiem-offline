@@ -45,10 +45,13 @@ function ExamSaveModal({ show, onClose, newSaveTitle, setNewSaveTitle, saveToNew
               ) : (
                 savableExams.map(exam => (
                   <button key={exam.id} className="list-group-item list-group-item-action d-flex justify-content-between align-items-center rounded-3 mb-1 border" onClick={() => saveToExisting(exam)}>
-                    <span className="text-truncate pe-3">
-                      {exam.is_system ? '🎓 ' : '📒 '}
-                      {exam.title}
-                    </span>
+                    <div className="text-truncate pe-3 text-start">
+                      <div className="fw-bold text-truncate">
+                        {exam.is_system ? '🎓 ' : '📒 '}
+                        {exam.title}
+                      </div>
+                      <small className="text-muted">📁 {exam.subject || 'Chưa phân loại'}</small>
+                    </div>
                     <span className="badge bg-primary rounded-pill">+</span>
                   </button>
                 ))

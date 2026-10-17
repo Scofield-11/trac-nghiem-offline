@@ -139,6 +139,58 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
     }
   };
 
+  // Cấp hoặc thu hồi toàn bộ 1 Môn học (Folder) cho học viên chỉ với 1 chạm
+  const handleToggleSubjectAssignment = async (userId, subjectExams, subjectName) => {
+    const currentList = assignmentsMap[userId] || [];
+    const subjectExamIds = subjectExams.map((e) => Number(e.id));
+    const allAssigned = subjectExamIds.every((id) => currentList.includes(id));
+
+    const updatedList = allAssigned
+      ? currentList.filter((id) => !subjectExamIds.includes(id))
+      : Array.from(new Set([...currentList, ...subjectExamIds]));
+
+    setAssignmentsMap({
+      ...assignmentsMap,
+      [userId]: updatedList,
+    });
+
+    try {
+      if (allAssigned) {
+        const { error } = await supabase
+          .from('exam_assignments')
+          .delete()
+          .eq('user_id', userId)
+          .in('exam_id', subjectExamIds);
+        if (error) throw error;
+        toast.info(`Đã thu hồi môn "${subjectName}"`);
+      } else {
+        const missingIds = subjectExamIds.filter((id) => !currentList.includes(id));
+        if (missingIds.length > 0) {
+          const rows = missingIds.map((examId) => ({ user_id: userId, exam_id: examId }));
+          const { error } = await supabase.from('exam_assignments').insert(rows);
+          if (error) throw error;
+        }
+        toast.success(`📁 Đã cấp môn "${subjectName}" (${subjectExamIds.length} học phần)!`);
+      }
+    } catch (err) {
+      setAssignmentsMap({
+        ...assignmentsMap,
+        [userId]: currentList,
+      });
+      toast.error('Lỗi cập nhật phân quyền môn học: ' + (err.message || ''));
+    }
+  };
+
+  // Gom nhóm các học phần hệ thống theo từng Môn học (Folder)
+  const groupedSystemSubjects = Object.entries(
+    systemExams.reduce((acc, exam) => {
+      const subj = (exam.subject && String(exam.subject).trim()) || 'Chưa phân loại';
+      if (!acc[subj]) acc[subj] = [];
+      acc[subj].push(exam);
+      return acc;
+    }, {})
+  ).sort(([a], [b]) => a.localeCompare(b, 'vi'));
+
   const handleToggleUserActive = async (targetUser) => {
     const nextState = !targetUser.is_active;
     setUsers((prev) =>
@@ -288,46 +340,101 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
                       </button>
                     </div>
 
+                    <div className="alert alert-info py-2 px-3 small rounded-3 border-0 mb-3">
+                      💡 <strong>Tự động tạo Folder:</strong> Khi bạn cấp bất kỳ học phần nào (hoặc cấp cả môn), thư mục <strong>Môn học</strong> tương ứng sẽ tự động xuất hiện bên tài khoản của học viên.
+                    </div>
+
                     {systemExams.length === 0 ? (
                       <p className="text-muted text-center py-3 mb-0">
                         Chưa có học phần hệ thống nào để phân quyền.
                       </p>
                     ) : (
-                      <div className="list-group">
-                        {systemExams.map((exam) => {
+                      <div className="d-flex flex-column gap-3">
+                        {groupedSystemSubjects.map(([subjectName, examsInSubject]) => {
                           const userExams = assignmentsMap[editingUser.id] || [];
-                          const isChecked = userExams.includes(Number(exam.id));
+                          const assignedInSubjCount = examsInSubject.filter((e) =>
+                            userExams.includes(Number(e.id))
+                          ).length;
+                          const isAllAssigned =
+                            examsInSubject.length > 0 &&
+                            assignedInSubjCount === examsInSubject.length;
+
                           return (
-                            <label
-                              key={exam.id}
-                              className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center rounded-3 mb-2 border ${
-                                isChecked ? 'border-primary bg-accent-light' : ''
-                              }`}
-                              style={{ cursor: 'pointer' }}
+                            <div
+                              key={subjectName}
+                              className="border rounded-4 overflow-hidden bg-light shadow-sm"
                             >
-                              <div className="d-flex align-items-center gap-3">
-                                <input
-                                  type="checkbox"
-                                  className="form-check-input mt-0"
-                                  style={{ width: '20px', height: '20px' }}
-                                  checked={isChecked}
-                                  onChange={() => handleToggleAssignment(editingUser.id, exam.id)}
-                                />
+                              <div className="bg-white p-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
                                 <div>
-                                  <div className="fw-bold text-dark">{exam.title}</div>
+                                  <div className="fw-bold text-dark fs-6">
+                                    📁 {subjectName}
+                                  </div>
                                   <small className="text-muted">
-                                    {exam.questionCount || 0} câu hỏi
+                                    Đã cấp{' '}
+                                    <strong className="text-primary">
+                                      {assignedInSubjCount}/{examsInSubject.length}
+                                    </strong>{' '}
+                                    học phần
                                   </small>
                                 </div>
+
+                                <button
+                                  type="button"
+                                  className={`btn btn-sm fw-bold rounded-pill px-3 ${
+                                    isAllAssigned ? 'btn-outline-danger' : 'btn-accent'
+                                  }`}
+                                  onClick={() =>
+                                    handleToggleSubjectAssignment(
+                                      editingUser.id,
+                                      examsInSubject,
+                                      subjectName
+                                    )
+                                  }
+                                >
+                                  {isAllAssigned ? '✖ Thu hồi cả môn' : '✓ Cấp cả môn này'}
+                                </button>
                               </div>
-                              <span
-                                className={`badge rounded-pill ${
-                                  isChecked ? 'bg-success' : 'bg-secondary'
-                                }`}
-                              >
-                                {isChecked ? 'Đã cấp' : 'Chưa cấp'}
-                              </span>
-                            </label>
+
+                              <div className="p-2">
+                                {examsInSubject.map((exam) => {
+                                  const isChecked = userExams.includes(Number(exam.id));
+                                  return (
+                                    <label
+                                      key={exam.id}
+                                      className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center rounded-3 mb-1 border bg-white p-2 px-3 ${
+                                        isChecked ? 'border-primary bg-accent-light' : ''
+                                      }`}
+                                      style={{ cursor: 'pointer' }}
+                                    >
+                                      <div className="d-flex align-items-center gap-3">
+                                        <input
+                                          type="checkbox"
+                                          className="form-check-input mt-0"
+                                          style={{ width: '20px', height: '20px' }}
+                                          checked={isChecked}
+                                          onChange={() =>
+                                            handleToggleAssignment(editingUser.id, exam.id)
+                                          }
+                                        />
+                                        <div>
+                                          <div className="fw-bold text-dark">{exam.title}</div>
+                                          <small className="text-muted">
+                                            {exam.questionCount || 0} câu hỏi
+                                          </small>
+                                        </div>
+                                      </div>
+                                      <span
+                                        className={`badge rounded-pill ${
+                                          isChecked ? 'bg-success' : 'bg-secondary'
+                                        }`}
+                                      >
+                                        {isChecked ? 'Đã cấp' : 'Chưa cấp'}
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           );
                         })}
                       </div>

@@ -87,12 +87,14 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
     ).join('\n');
 
     try {
+      const targetSubject = examData.subject || "Chưa phân loại";
       await api.post("/exams/import", {
         title: newTitle.trim(),
+        subject: targetSubject,
         raw_text: rawText,
-        is_system: false // Luôn lưu đề câu sai vào Note riêng của User
+        is_system: false // Luôn lưu đề câu sai vào Note riêng của User theo đúng Môn học
       });
-      toast.success(`Đã tạo Note ôn tập câu sai: ${newTitle.trim()}`);
+      toast.success(`Đã tạo Note ôn tập trong môn [${targetSubject}]: ${newTitle.trim()}`);
       backToList();
       window.scrollTo(0, 0);
     } catch (error) {

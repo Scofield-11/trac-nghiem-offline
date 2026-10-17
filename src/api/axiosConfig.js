@@ -100,9 +100,12 @@ const parseRawTextToQuestions = (rawText) => {
   return questions;
 };
 
+const normalizeSubject = (s) => (s && String(s).trim() ? String(s).trim() : 'Chưa phân loại');
+
 const mapExamSummary = (row) => ({
   id: row.id,
   title: row.title,
+  subject: normalizeSubject(row.subject),
   questionCount: row.question_count ?? 0,
   is_system: Boolean(row.is_system),
   owner_id: row.owner_id,
@@ -115,7 +118,7 @@ const api = {
     if (url === "/exams") {
       const { data, error } = await supabase
         .from('exams')
-        .select('id, title, question_count, is_system, owner_id, created_at')
+        .select('id, title, subject, question_count, is_system, owner_id, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw createError(error.message || "Không thể tải danh sách đề thi");
@@ -130,7 +133,7 @@ const api = {
       const id = Number(url.split("/")[2]);
       const cached = getCachedExamById(id);
       if (cached && Array.isArray(cached.questions)) {
-        return { data: cached };
+        return { data: { ...cached, subject: normalizeSubject(cached.subject) } };
       }
 
       const { data, error } = await supabase
@@ -144,6 +147,7 @@ const api = {
       const examDetail = {
         id: data.id,
         title: data.title,
+        subject: normalizeSubject(data.subject),
         questions: Array.isArray(data.questions) ? data.questions : [],
         questionCount: data.question_count ?? (Array.isArray(data.questions) ? data.questions.length : 0),
         is_system: Boolean(data.is_system),
@@ -163,6 +167,7 @@ const api = {
       const title = payload?.title?.trim();
       if (!title) throw createError("Tên bài thi không được để trống");
 
+      const subject = normalizeSubject(payload?.subject);
       const questions = parseRawTextToQuestions(payload.raw_text);
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
@@ -175,6 +180,7 @@ const api = {
         .from('exams')
         .insert([{
           title,
+          subject,
           questions,
           owner_id: user.id,
           is_system: isSystem
@@ -187,6 +193,7 @@ const api = {
       const fullExam = {
         id: data.id,
         title: data.title,
+        subject: normalizeSubject(data.subject || subject),
         questions: data.questions || questions,
         questionCount: data.question_count ?? questions.length,
         is_system: Boolean(data.is_system),
@@ -197,7 +204,7 @@ const api = {
       // Cập nhật ngay vào cache để mở trong 0ms
       setCachedExamById(data.id, fullExam);
       const currentList = getCachedExamsList();
-      setCachedExamsList([mapExamSummary({ ...data, question_count: fullExam.questionCount }), ...currentList]);
+      setCachedExamsList([mapExamSummary({ ...data, subject: fullExam.subject, question_count: fullExam.questionCount }), ...currentList]);
 
       return { data: { message: "Tạo bài test thành công", exam_id: data.id } };
     }
@@ -211,10 +218,14 @@ const api = {
       if (!title) throw createError("Tên bài thi không được để trống");
 
       const questions = parseRawTextToQuestions(payload.raw_text);
+      const updateFields = { title, questions };
+      if (payload?.subject !== undefined) {
+        updateFields.subject = normalizeSubject(payload.subject);
+      }
 
       const { data, error } = await supabase
         .from('exams')
-        .update({ title, questions })
+        .update(updateFields)
         .eq('id', id)
         .select('*')
         .single();
@@ -224,6 +235,7 @@ const api = {
       const updatedExam = {
         id: data.id,
         title: data.title,
+        subject: normalizeSubject(data.subject),
         questions: data.questions || questions,
         questionCount: data.question_count ?? questions.length,
         is_system: Boolean(data.is_system),
@@ -237,7 +249,7 @@ const api = {
       setCachedExamsList(
         currentList.map(item =>
           Number(item.id) === id
-            ? { ...item, title: updatedExam.title, questionCount: updatedExam.questionCount }
+            ? { ...item, title: updatedExam.title, subject: updatedExam.subject, questionCount: updatedExam.questionCount }
             : item
         )
       );
@@ -284,6 +296,7 @@ export const syncAllDataForOffline = async () => {
     setCachedExamById(item.id, {
       id: item.id,
       title: item.title,
+      subject: normalizeSubject(item.subject),
       questions: Array.isArray(item.questions) ? item.questions : [],
       questionCount: item.question_count ?? (Array.isArray(item.questions) ? item.questions.length : 0),
       is_system: Boolean(item.is_system),
@@ -507,11 +520,12 @@ export const exportAllDataToJson = async (onlyPersonal = true) => {
   const { data: examsData } = await query;
 
   const backupData = {
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     exams: (examsData || []).map(e => ({
       id: e.id,
       title: e.title,
+      subject: normalizeSubject(e.subject),
       questions: e.questions || []
     })),
     history: getCachedHistory()
@@ -529,9 +543,10 @@ export const exportAllDataToJson = async (onlyPersonal = true) => {
   URL.revokeObjectURL(url);
 };
 
-export const exportSingleExamToJson = (title, questions) => {
+export const exportSingleExamToJson = (title, questions, subject = 'Chưa phân loại') => {
   const examData = {
     title: title || "De_thi",
+    subject: normalizeSubject(subject),
     questions: questions.map((q, idx) => ({
       id: q.id || idx + 1,
       question: q.question,
@@ -551,7 +566,37 @@ export const exportSingleExamToJson = (title, questions) => {
   URL.revokeObjectURL(url);
 };
 
-const normalizeExamObject = (rawExam, indexOffset = 0) => {
+export const renameSubjectFolder = async (oldSubject, newSubject, isSystem) => {
+  const cleanNew = normalizeSubject(newSubject);
+  const examIds = getCachedExamsList()
+    .filter(e => Boolean(e.is_system) === Boolean(isSystem) && normalizeSubject(e.subject) === oldSubject)
+    .map(e => Number(e.id));
+
+  if (examIds.length === 0) return;
+
+  const { error } = await supabase
+    .from('exams')
+    .update({ subject: cleanNew })
+    .in('id', examIds);
+
+  if (error) throw new Error(error.message || 'Không thể đổi tên môn học!');
+
+  const currentList = getCachedExamsList();
+  setCachedExamsList(
+    currentList.map(item =>
+      examIds.includes(Number(item.id)) ? { ...item, subject: cleanNew } : item
+    )
+  );
+
+  examIds.forEach(id => {
+    const cached = getCachedExamById(id);
+    if (cached) {
+      setCachedExamById(id, { ...cached, subject: cleanNew });
+    }
+  });
+};
+
+const normalizeExamObject = (rawExam, indexOffset = 0, fallbackSubject = 'Chưa phân loại') => {
   if (!rawExam || !rawExam.title || !Array.isArray(rawExam.questions)) return null;
 
   const validQuestions = rawExam.questions
@@ -567,11 +612,12 @@ const normalizeExamObject = (rawExam, indexOffset = 0) => {
 
   return {
     title: String(rawExam.title).trim(),
+    subject: normalizeSubject(rawExam.subject || fallbackSubject),
     questions: validQuestions
   };
 };
 
-export const importDataFromJsonFile = (file, isSystem = false) => {
+export const importDataFromJsonFile = (file, isSystem = false, defaultSubject = 'Chưa phân loại') => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -581,14 +627,14 @@ export const importDataFromJsonFile = (file, isSystem = false) => {
 
         if (parsed && Array.isArray(parsed.exams)) {
           importedExams = parsed.exams
-            .map((e, i) => normalizeExamObject(e, i))
+            .map((e, i) => normalizeExamObject(e, i, defaultSubject))
             .filter(Boolean);
         } else if (Array.isArray(parsed)) {
           importedExams = parsed
-            .map((e, i) => normalizeExamObject(e, i))
+            .map((e, i) => normalizeExamObject(e, i, defaultSubject))
             .filter(Boolean);
         } else if (parsed && parsed.title && Array.isArray(parsed.questions)) {
-          const single = normalizeExamObject(parsed, 0);
+          const single = normalizeExamObject(parsed, 0, defaultSubject);
           if (single) importedExams.push(single);
         } else {
           return reject(new Error("Cấu trúc file JSON không đúng định dạng đề thi!"));
@@ -604,6 +650,7 @@ export const importDataFromJsonFile = (file, isSystem = false) => {
 
         const rowsToInsert = importedExams.map(exam => ({
           title: exam.title,
+          subject: normalizeSubject(exam.subject),
           questions: exam.questions,
           owner_id: user.id,
           is_system: Boolean(isSystem)
