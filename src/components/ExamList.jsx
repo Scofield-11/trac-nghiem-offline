@@ -9,6 +9,7 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
   const [showCreateBox, setShowCreateBox] = useState(false);
   const [activeTab, setActiveTab] = useState("system"); // 'system' | 'personal'
   const fileInputRef = useRef(null);
+  const rawTextInputRef = useRef(null);
 
   const isAdmin = profile?.role === 'admin';
 
@@ -143,8 +144,16 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
             placeholder="Nhập tên học phần..."
             value={title}
             onChange={e => setTitle(e.target.value)}
+            enterKeyHint="next"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                rawTextInputRef.current?.focus();
+              }
+            }}
           />
           <textarea
+            ref={rawTextInputRef}
             className="form-control mb-3 rounded-3"
             rows="4"
             placeholder="Câu hỏi 1 | Đáp án A | Đáp án B | Đáp án C | Đáp án D | 1"

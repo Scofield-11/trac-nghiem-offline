@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import { supabase, tempSupabaseAdminClient, formatLoginEmail } from '../api/supabaseClient';
 import {
@@ -14,6 +14,9 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
   const [password, setPassword] = useState('');
   const [selectedNewUserExams, setSelectedNewUserExams] = useState([]);
   const [creating, setCreating] = useState(false);
+
+  const fullNameRef = useRef(null);
+  const passwordRef = useRef(null);
 
   const [users, setUsers] = useState([]);
   const [assignmentsMap, setAssignmentsMap] = useState({});
@@ -321,27 +324,49 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
                       placeholder="VD: nguyenvana"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
+                      enterKeyHint="next"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck="false"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          fullNameRef.current?.focus();
+                        }
+                      }}
                       required
                     />
                   </div>
                   <div className="col-12 col-md-4">
                     <label className="form-label small fw-bold text-muted">Họ và tên</label>
                     <input
+                      ref={fullNameRef}
                       type="text"
                       className="form-control"
                       placeholder="VD: Nguyễn Văn A"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
+                      enterKeyHint="next"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          passwordRef.current?.focus();
+                        }
+                      }}
                     />
                   </div>
                   <div className="col-12 col-md-4">
                     <label className="form-label small fw-bold text-muted">Mật khẩu (*)</label>
                     <input
+                      ref={passwordRef}
                       type="text"
                       className="form-control"
                       placeholder="Tối thiểu 6 ký tự"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      enterKeyHint="done"
+                      autoCapitalize="none"
+                      autoCorrect="off"
                       required
                     />
                   </div>

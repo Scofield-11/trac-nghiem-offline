@@ -16,7 +16,7 @@ import ExamEditForm from './ExamEditForm';
 import ExamHistoryTable from './ExamHistoryTable';
 import AdminPanel from './AdminPanel';
 
-function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigger, onReportsChanged }) {
+function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigger, onReportsChanged, onFocusModeChange }) {
   const [editingExamId, setEditingExamId] = useState(null);
   const [editTitle, setEditTitle] = useState("");
   const [editQuestions, setEditQuestions] = useState([]);
@@ -70,6 +70,16 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
     fetchExamsList().finally(() => setIsLoading(false));
     fetchHistory();
   }, [user?.id, syncTrigger]);
+
+  // Tự động ẩn thanh Header (Cập nhật / Đăng xuất) khi đang làm bài, sửa đề hoặc xem chi tiết lịch sử
+  useEffect(() => {
+    if (onFocusModeChange) {
+      onFocusModeChange(Boolean(examData || editingExamId || viewHistory));
+    }
+    return () => {
+      if (onFocusModeChange) onFocusModeChange(false);
+    };
+  }, [examData, editingExamId, viewHistory, onFocusModeChange]);
 
   const handleClearHistory = async () => {
     if (window.confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử làm bài của tài khoản này?")) {

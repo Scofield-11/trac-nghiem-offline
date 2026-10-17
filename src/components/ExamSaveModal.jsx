@@ -20,7 +20,20 @@ function ExamSaveModal({ show, onClose, newSaveTitle, setNewSaveTitle, saveToNew
             <div className="mb-4">
               <label className="fw-bold mb-2">Tạo học phần cá nhân (Note) mới:</label>
               <div className="input-group">
-                <input type="text" className="form-control" placeholder="Tên Note mới..." value={newSaveTitle} onChange={e => setNewSaveTitle(e.target.value)} />
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Tên Note mới..."
+                  value={newSaveTitle}
+                  onChange={e => setNewSaveTitle(e.target.value)}
+                  enterKeyHint="done"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      saveToNew();
+                    }
+                  }}
+                />
                 <button className="btn btn-accent fw-bold text-nowrap" onClick={saveToNew}>Tạo & Lưu</button>
               </div>
             </div>
