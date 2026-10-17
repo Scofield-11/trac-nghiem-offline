@@ -479,22 +479,127 @@ body {
   font-weight: 600;
 }
 
+/* Header gọn gàng trên Mobile & tự động lên 1 hàng trên PC */
+.header-actions-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.header-actions-grid.cols-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.header-actions-grid.cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.btn-header-action {
+  min-height: 38px !important;
+  padding: 0.35rem 0.5rem !important;
+  border-radius: 10px !important;
+  font-size: 0.82rem !important;
+  font-weight: 700 !important;
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .app-header-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .header-actions-grid {
+    display: flex;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+    gap: 10px;
+  }
+
+  .btn-header-action {
+    padding: 0.4rem 0.9rem !important;
+    font-size: 0.86rem !important;
+  }
+}
+
+/* Thanh chuyển Tab (Segmented Control) cân đối trên Mobile */
+.mobile-tab-switcher {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  background: #fff;
+  padding: 5px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+}
+
+.admin-tab-switcher {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  background: #fff;
+  padding: 5px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+}
+
+.mobile-tab-btn {
+  min-height: 42px !important;
+  border-radius: 10px !important;
+  border: none !important;
+  background: transparent;
+  color: #4b5563;
+  font-size: 0.88rem !important;
+  font-weight: 700 !important;
+  padding: 0.4rem 0.5rem !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.mobile-tab-btn.active {
+  background: var(--accent-gradient);
+  color: #fff !important;
+  box-shadow: var(--shadow-accent);
+}
+
+.tab-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(124, 58, 237, 0.12);
+  color: var(--accent);
+}
+
+.mobile-tab-btn.active .tab-count-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
 /* Nút bấm dạng ô lưới trên Mobile */
 .mobile-action-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
 
 .mobile-btn-tile {
-  min-height: 50px !important;
-  border-radius: 14px !important;
-  font-size: 0.95rem !important;
+  min-height: 46px !important;
+  border-radius: 12px !important;
+  font-size: 0.92rem !important;
   font-weight: 700 !important;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.04);
 }
 

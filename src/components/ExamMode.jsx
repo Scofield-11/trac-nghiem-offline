@@ -341,7 +341,7 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
   }
 
   return (
-    <div className="container mt-4" style={{ maxWidth: '900px' }}>
+    <div className="container mt-2 mt-md-4 px-0 px-sm-2" style={{ maxWidth: '900px' }}>
       {profile?.role === 'admin' && (
         <AdminPanel
           show={showAdminPanel}

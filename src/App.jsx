@@ -107,18 +107,20 @@ function App() {
   return (
     <div className="container-fluid py-3" style={{ maxWidth: '1140px' }}>
       <header className="mb-3">
-        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 bg-white p-3 rounded-4 shadow-sm">
-          <div className="d-flex align-items-center gap-2">
-            <img src="/sea_15651557.ico" alt="logo" style={{ width: '36px', height: '36px', objectFit: 'contain' }} />
-            <div>
-              <h1 className="fw-bold fs-4 gradient-text mb-0">Thi Trắc Nghiệm</h1>
-              <p className="text-muted small mb-0">Đồng bộ đám mây & Hỗ trợ Offline</p>
+        <div className="app-header-card bg-white p-2 p-sm-3 rounded-4 shadow-sm">
+          {/* Hàng 1: Logo + Tên Web bên trái & Tên tài khoản bên phải */}
+          <div className="d-flex justify-content-between align-items-center gap-2">
+            <div className="d-flex align-items-center gap-2">
+              <img
+                src="/sea_15651557.ico"
+                alt="logo"
+                style={{ width: '32px', height: '32px', objectFit: 'contain' }}
+              />
+              <h1 className="fw-bold fs-5 gradient-text mb-0">Thi Trắc Nghiệm</h1>
             </div>
-          </div>
 
-          {user && profile && (
-            <div className="d-flex align-items-center flex-wrap gap-2">
-              <span className="badge bg-accent-light text-dark px-3 py-2 rounded-pill">
+            {user && profile && (
+              <span className="badge bg-accent-light text-dark px-2 px-sm-3 py-2 rounded-pill text-truncate" style={{ maxWidth: '170px' }}>
                 👤 {profile.full_name || profile.username}
                 {profile.role === 'admin' && (
                   <strong className="ms-1" style={{ color: 'var(--accent)' }}>
@@ -126,22 +128,27 @@ function App() {
                   </strong>
                 )}
               </span>
+            )}
+          </div>
 
+          {/* Hàng 2: Cụm nút điều khiển chia cột đều đặn trên Mobile */}
+          {user && profile && (
+            <div className={`header-actions-grid mt-2 pt-2 border-top ${profile.role === 'admin' ? 'cols-3' : 'cols-2'}`}>
               <button
-                className="btn btn-outline-primary btn-mobile-chip"
+                className="btn btn-outline-primary btn-header-action"
                 onClick={handleManualSync}
                 disabled={isSyncing}
                 title="Tải dữ liệu mới nhất và lưu dùng Offline"
               >
-                {isSyncing ? '⏳ Đang cập nhật...' : '🔄 Cập nhật'}
+                {isSyncing ? '⏳ Đang tải...' : '🔄 Cập nhật'}
               </button>
 
               {profile.role === 'admin' && (
                 <button
-                  className="btn btn-warning btn-mobile-chip text-dark position-relative"
+                  className="btn btn-warning btn-header-action text-dark position-relative"
                   onClick={() => setShowAdminPanel(true)}
                 >
-                  🛡️ Quản trị viên
+                  🛡️ Quản trị
                   {pendingReportsCount > 0 && (
                     <span className="badge rounded-pill bg-danger ms-1">
                       {pendingReportsCount}
@@ -150,7 +157,7 @@ function App() {
                 </button>
               )}
 
-              <button className="btn btn-outline-danger btn-mobile-chip" onClick={handleLogout}>
+              <button className="btn btn-outline-danger btn-header-action" onClick={handleLogout}>
                 🚪 Đăng xuất
               </button>
             </div>

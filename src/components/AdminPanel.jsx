@@ -278,37 +278,31 @@ function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsC
           </div>
 
           <div className="modal-body bg-light p-3 p-md-4">
-            {/* Thanh chuyển 3 Tab trong Admin Panel */}
-            <div className="d-flex flex-wrap gap-2 mb-4">
+            {/* Thanh chuyển 3 Tab trong Admin Panel gọn gàng trên Mobile */}
+            <div className="admin-tab-switcher mb-3">
               <button
                 type="button"
-                className={`btn flex-grow-1 mobile-btn-tile ${
-                  activeTab === 'create' ? 'btn-accent' : 'btn-light border bg-white text-dark'
-                }`}
+                className={`btn mobile-tab-btn ${activeTab === 'create' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('create');
                   setEditingUser(null);
                 }}
               >
-                ➕ Cấp tài khoản
+                ➕ Cấp TK
               </button>
               <button
                 type="button"
-                className={`btn flex-grow-1 mobile-btn-tile ${
-                  activeTab === 'users' ? 'btn-accent' : 'btn-light border bg-white text-dark'
-                }`}
+                className={`btn mobile-tab-btn ${activeTab === 'users' ? 'active' : ''}`}
                 onClick={() => setActiveTab('users')}
               >
-                👥 Tài khoản ({users.filter((u) => u.role !== 'admin').length})
+                👥 Học viên ({users.filter((u) => u.role !== 'admin').length})
               </button>
               <button
                 type="button"
-                className={`btn flex-grow-1 mobile-btn-tile position-relative ${
-                  activeTab === 'reports' ? 'btn-accent' : 'btn-light border bg-white text-dark'
-                }`}
+                className={`btn mobile-tab-btn position-relative ${activeTab === 'reports' ? 'active' : ''}`}
                 onClick={() => setActiveTab('reports')}
               >
-                🔔 Báo lỗi đáp án
+                🔔 Báo lỗi
                 {pendingCount > 0 && (
                   <span className="badge rounded-pill bg-danger ms-1">{pendingCount}</span>
                 )}

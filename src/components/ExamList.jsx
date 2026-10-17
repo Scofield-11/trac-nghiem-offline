@@ -62,28 +62,26 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
 
   return (
     <>
-      {/* Thanh chuyển đổi 2 Tab: Học phần & Học phần của tôi (Note) */}
-      <div className="d-flex gap-2 mb-3">
+      {/* Thanh chuyển đổi 2 Tab dạng Segmented Pill cân đối trên Mobile */}
+      <div className="mobile-tab-switcher mb-3">
         <button
           type="button"
-          className={`btn flex-grow-1 mobile-btn-tile ${
-            activeTab === 'system' ? 'btn-accent' : 'btn-light border bg-white text-dark'
-          }`}
+          className={`btn mobile-tab-btn ${activeTab === 'system' ? 'active' : ''}`}
           onClick={() => {
             setActiveTab('system');
             setShowCreateBox(false);
           }}
         >
-          🎓 Học phần ({systemExams.length})
+          <span>🎓 Học phần</span>
+          <span className="tab-count-badge">{systemExams.length}</span>
         </button>
         <button
           type="button"
-          className={`btn flex-grow-1 mobile-btn-tile ${
-            activeTab === 'personal' ? 'btn-accent' : 'btn-light border bg-white text-dark'
-          }`}
+          className={`btn mobile-tab-btn ${activeTab === 'personal' ? 'active' : ''}`}
           onClick={() => setActiveTab('personal')}
         >
-          📒 Học phần của tôi (Note) ({personalExams.length})
+          <span>📒 Note của tôi</span>
+          <span className="tab-count-badge">{personalExams.length}</span>
         </button>
       </div>
 
