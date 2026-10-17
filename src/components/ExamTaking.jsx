@@ -1,12 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { toast } from 'react-toastify';
 import api, { saveExamHistoryToCloud } from '../api/axiosConfig';
 import confetti from 'canvas-confetti';
+import QuestionReportModal from './QuestionReportModal';
 
 function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, openSaveModal, startExam }) {
   const [answers, setAnswers] = useState({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showConfirmBack, setShowConfirmBack] = useState(false);
+  const [reportingQuestion, setReportingQuestion] = useState(null);
+  const longPressTimerRef = useRef(null);
+
+  // Xử lý nhấn giữ (Long Press 550ms) vào câu hỏi để mở bảng ghi chú gửi Admin
+  const handlePressStart = (question) => {
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      if (navigator.vibrate) navigator.vibrate(40);
+      setReportingQuestion(question);
+    }, 550);
+  };
+
+  const handlePressCancel = () => {
+    clearTimeout(longPressTimerRef.current);
+  };
 
   const handleBackClick = () => {
     if (!isSubmitted && Object.keys(answers).length > 0) {
@@ -200,12 +216,34 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
         </div>
       </div>
 
+      {/* Modal báo lỗi câu hỏi khi người dùng nhấn giữ */}
+      <QuestionReportModal
+        show={Boolean(reportingQuestion)}
+        onClose={() => setReportingQuestion(null)}
+        question={reportingQuestion}
+        examId={examData.id}
+        examTitle={examData.title}
+      />
+
       {/* Nội dung câu hỏi */}
       <div className="mx-auto exam-questions-col" style={{ maxWidth: '800px' }}>
+        <div className="text-muted small mb-2 px-1 d-print-none">
+          💡 <em>Mẹo: Nhấn giữ vào bất kỳ câu hỏi nào để ghi chú báo lỗi đáp án cho Admin.</em>
+        </div>
         {!isSubmitted ? (
           <>
             {examData.questions.map((q, idx) => (
-              <div id={`question-${idx}`} key={q.id} className="bg-white rounded-4 shadow-sm mb-3 p-3 p-md-4">
+              <div
+                id={`question-${idx}`}
+                key={q.id}
+                className="bg-white rounded-4 shadow-sm mb-3 p-3 p-md-4"
+                onTouchStart={() => handlePressStart(q)}
+                onTouchEnd={handlePressCancel}
+                onTouchMove={handlePressCancel}
+                onMouseDown={() => handlePressStart(q)}
+                onMouseUp={handlePressCancel}
+                onMouseLeave={handlePressCancel}
+              >
                 <div className="d-flex justify-content-between align-items-start gap-2 mb-3">
                   <div className="d-flex align-items-start gap-2">
                     <span className="question-number mt-1">{idx + 1}</span>
@@ -276,7 +314,17 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
               const isCorrect = answers[q.id] === q.correct_ans;
               const cardClass = isCorrect ? 'correct-answer-card' : 'wrong-answer-card';
               return (
-                <div id={`question-${idx}`} key={q.id} className={`bg-white ${cardClass} shadow-sm mb-3 p-3 p-md-4`}>
+                <div
+                  id={`question-${idx}`}
+                  key={q.id}
+                  className={`bg-white ${cardClass} shadow-sm mb-3 p-3 p-md-4`}
+                  onTouchStart={() => handlePressStart(q)}
+                  onTouchEnd={handlePressCancel}
+                  onTouchMove={handlePressCancel}
+                  onMouseDown={() => handlePressStart(q)}
+                  onMouseUp={handlePressCancel}
+                  onMouseLeave={handlePressCancel}
+                >
                   <div className="d-flex align-items-start gap-2 mb-3">
                     <span className="question-number mt-1">{idx + 1}</span>
                     <h5 className="mb-0 fw-bold" style={{ fontSize: '1.05rem', lineHeight: '1.45' }}>{q.question}</h5>

@@ -8,10 +8,10 @@ const createError = (detailMessage) => ({
   response: { data: { detail: detailMessage } }
 });
 
-// ================= CACHE-FIRST HELPERS (0ms UX) =================
+// ================= CACHE-FIRST & OFFLINE HELPERS (0ms UX) =================
 export const getCachedExamsList = () => {
   try {
-    return JSON.parse(sessionStorage.getItem(EXAMS_LIST_CACHE_KEY) || '[]');
+    return JSON.parse(localStorage.getItem(EXAMS_LIST_CACHE_KEY) || '[]');
   } catch {
     return [];
   }
@@ -19,7 +19,7 @@ export const getCachedExamsList = () => {
 
 const setCachedExamsList = (list) => {
   try {
-    sessionStorage.setItem(EXAMS_LIST_CACHE_KEY, JSON.stringify(list));
+    localStorage.setItem(EXAMS_LIST_CACHE_KEY, JSON.stringify(list));
   } catch {
     // Ignore storage quota errors
   }
@@ -27,7 +27,7 @@ const setCachedExamsList = (list) => {
 
 export const getCachedExamById = (id) => {
   try {
-    const raw = sessionStorage.getItem(getExamCacheKey(id));
+    const raw = localStorage.getItem(getExamCacheKey(id));
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -36,7 +36,7 @@ export const getCachedExamById = (id) => {
 
 const setCachedExamById = (id, examData) => {
   try {
-    sessionStorage.setItem(getExamCacheKey(id), JSON.stringify(examData));
+    localStorage.setItem(getExamCacheKey(id), JSON.stringify(examData));
   } catch {
     // Ignore storage quota errors
   }
@@ -44,7 +44,7 @@ const setCachedExamById = (id, examData) => {
 
 export const getCachedHistory = () => {
   try {
-    return JSON.parse(sessionStorage.getItem(HISTORY_CACHE_KEY) || '[]');
+    return JSON.parse(localStorage.getItem(HISTORY_CACHE_KEY) || '[]');
   } catch {
     return [];
   }
@@ -52,7 +52,7 @@ export const getCachedHistory = () => {
 
 const setCachedHistory = (historyList) => {
   try {
-    sessionStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(historyList));
+    localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(historyList));
   } catch {
     // Ignore storage quota errors
   }
@@ -60,7 +60,13 @@ const setCachedHistory = (historyList) => {
 
 export const clearAllExamCaches = () => {
   try {
-    sessionStorage.clear();
+    localStorage.removeItem(EXAMS_LIST_CACHE_KEY);
+    localStorage.removeItem(HISTORY_CACHE_KEY);
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith('exam_cache_')) {
+        localStorage.removeItem(key);
+      }
+    });
   } catch {
     // Ignore
   }
@@ -251,7 +257,7 @@ const api = {
 
       if (error) throw createError(error.message || "Không thể xóa bài thi");
 
-      sessionStorage.removeItem(getExamCacheKey(id));
+      localStorage.removeItem(getExamCacheKey(id));
       const currentList = getCachedExamsList();
       setCachedExamsList(currentList.filter(e => Number(e.id) !== id));
 
@@ -259,6 +265,163 @@ const api = {
     }
     throw createError("Đường dẫn không hợp lệ");
   }
+};
+
+// ================= ĐỒNG BỘ DỮ LIỆU OFFLINE & CẬP NHẬT PWA =================
+export const syncAllDataForOffline = async () => {
+  // 1. Lấy toàn bộ đề thi mà user có quyền xem để lưu vào localStorage dùng Offline
+  const { data: allExams, error } = await supabase
+    .from('exams')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message || 'Không thể đồng bộ dữ liệu từ đám mây!');
+
+  const summaries = (allExams || []).map(mapExamSummary);
+  setCachedExamsList(summaries);
+
+  (allExams || []).forEach((item) => {
+    setCachedExamById(item.id, {
+      id: item.id,
+      title: item.title,
+      questions: Array.isArray(item.questions) ? item.questions : [],
+      questionCount: item.question_count ?? (Array.isArray(item.questions) ? item.questions.length : 0),
+      is_system: Boolean(item.is_system),
+      owner_id: item.owner_id,
+      created_at: item.created_at,
+    });
+  });
+
+  // 2. Đồng bộ lịch sử làm bài
+  await fetchExamHistoryFromCloud();
+
+  // 3. Kiểm tra và kích hoạt bản cập nhật PWA Service Worker (nếu có)
+  if ('serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (const reg of registrations) {
+      await reg.update();
+      if (reg.waiting) {
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+    }
+  }
+
+  return summaries;
+};
+
+// ================= BÁO LỖI CÂU HỎI & ADMIN XỬ LÝ =================
+export const submitQuestionReport = async ({ examId, examTitle, question, note }) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
+  if (!user) throw new Error('Vui lòng đăng nhập để gửi báo lỗi!');
+
+  const { data: profileData } = await supabase
+    .from('profiles')
+    .select('username, full_name')
+    .eq('id', user.id)
+    .single();
+
+  const senderName = profileData?.full_name || profileData?.username || user.email?.split('@')[0] || 'Học viên';
+
+  const { error } = await supabase.from('question_reports').insert([{
+    exam_id: Number(examId),
+    exam_title: examTitle,
+    question_id: Number(question.id) || 0,
+    question_text: question.question,
+    options: question.options,
+    current_correct_ans: Number(question.correct_ans) || 1,
+    user_id: user.id,
+    username: senderName,
+    note,
+    status: 'pending'
+  }]);
+
+  if (error) throw new Error(error.message || 'Không thể gửi báo lỗi!');
+};
+
+export const fetchQuestionReports = async () => {
+  const { data, error } = await supabase
+    .from('question_reports')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+};
+
+export const resolveAndFixQuestionReport = async ({
+  reportId,
+  examId,
+  questionId,
+  originalQuestionText,
+  updatedQuestionText,
+  updatedOptions,
+  updatedCorrectAns
+}) => {
+  // 1. Lấy đề thi gốc từ Supabase
+  const { data: examData, error: fetchErr } = await supabase
+    .from('exams')
+    .select('*')
+    .eq('id', Number(examId))
+    .single();
+
+  if (fetchErr || !examData) {
+    throw new Error('Không tìm thấy học phần gốc để cập nhật!');
+  }
+
+  // 2. Tìm và cập nhật câu hỏi bị sai trong mảng questions
+  const updatedQuestions = (examData.questions || []).map((q) => {
+    const isMatched =
+      (Number(q.id) && Number(q.id) === Number(questionId)) ||
+      q.question?.trim() === originalQuestionText?.trim();
+
+    if (isMatched) {
+      return {
+        ...q,
+        question: updatedQuestionText.trim(),
+        options: updatedOptions.map((o) => String(o).trim()),
+        correct_ans: Number(updatedCorrectAns)
+      };
+    }
+    return q;
+  });
+
+  // 3. Lưu lại mảng questions vào bảng exams
+  const { data: savedExam, error: updateExamErr } = await supabase
+    .from('exams')
+    .update({ questions: updatedQuestions })
+    .eq('id', Number(examId))
+    .select('*')
+    .single();
+
+  if (updateExamErr) throw new Error(updateExamErr.message || 'Lỗi khi lưu đáp án mới!');
+
+  // Cập nhật ngay vào localStorage cache
+  setCachedExamById(examId, {
+    id: savedExam.id,
+    title: savedExam.title,
+    questions: savedExam.questions || updatedQuestions,
+    questionCount: savedExam.question_count ?? updatedQuestions.length,
+    is_system: Boolean(savedExam.is_system),
+    owner_id: savedExam.owner_id,
+    created_at: savedExam.created_at
+  });
+
+  // 4. Đánh dấu báo cáo đã xử lý
+  const { error: reportErr } = await supabase
+    .from('question_reports')
+    .update({ status: 'resolved', current_correct_ans: Number(updatedCorrectAns) })
+    .eq('id', reportId);
+
+  if (reportErr) throw new Error(reportErr.message || 'Lỗi cập nhật trạng thái báo cáo!');
+};
+
+export const deleteQuestionReport = async (reportId) => {
+  const { error } = await supabase
+    .from('question_reports')
+    .delete()
+    .eq('id', reportId);
+  if (error) throw error;
 };
 
 // ================= LỊCH SỬ LÀM BÀI SUPABASE CLOUD =================

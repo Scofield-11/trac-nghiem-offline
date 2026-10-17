@@ -4,13 +4,26 @@ import 'react-toastify/dist/ReactToastify.css';
 import ExamMode from './components/ExamMode';
 import LoginScreen from './components/LoginScreen';
 import { supabase } from './api/supabaseClient';
-import { clearAllExamCaches } from './api/axiosConfig';
+import { clearAllExamCaches, syncAllDataForOffline, fetchQuestionReports } from './api/axiosConfig';
 
 function App() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncTrigger, setSyncTrigger] = useState(0);
+  const [pendingReportsCount, setPendingReportsCount] = useState(0);
+
+  const loadPendingReportsCount = async (role) => {
+    if (role !== 'admin') return;
+    try {
+      const reports = await fetchQuestionReports();
+      setPendingReportsCount(reports.filter((r) => r.status === 'pending').length);
+    } catch {
+      // Ignore if offline
+    }
+  };
 
   const fetchUserProfile = async (currentUser) => {
     if (!currentUser) {
@@ -32,15 +45,16 @@ function App() {
       return;
     }
 
-    setProfile(
-      data || {
-        id: currentUser.id,
-        username: currentUser.email?.split('@')[0] || 'user',
-        full_name: currentUser.user_metadata?.full_name || '',
-        role: currentUser.user_metadata?.role || 'user',
-        is_active: true,
-      }
-    );
+    const resolvedProfile = data || {
+      id: currentUser.id,
+      username: currentUser.email?.split('@')[0] || 'user',
+      full_name: currentUser.user_metadata?.full_name || '',
+      role: currentUser.user_metadata?.role || 'user',
+      is_active: true,
+    };
+
+    setProfile(resolvedProfile);
+    loadPendingReportsCount(resolvedProfile.role);
   };
 
   useEffect(() => {
@@ -63,6 +77,25 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const handleManualSync = async () => {
+    if (!navigator.onLine) {
+      return toast.warning('Thiết bị đang Offline. Bạn vẫn có thể làm các học phần đã lưu!');
+    }
+    setIsSyncing(true);
+    try {
+      const syncedList = await syncAllDataForOffline();
+      if (profile?.role === 'admin') {
+        await loadPendingReportsCount('admin');
+      }
+      setSyncTrigger((prev) => prev + 1);
+      toast.success(`Đã cập nhật ${syncedList.length} học phần (Sẵn sàng dùng Offline)!`);
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi cập nhật dữ liệu!');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleLogout = async () => {
     clearAllExamCaches();
     await supabase.auth.signOut();
@@ -79,25 +112,41 @@ function App() {
             <img src="/sea_15651557.ico" alt="logo" style={{ width: '36px', height: '36px', objectFit: 'contain' }} />
             <div>
               <h1 className="fw-bold fs-4 gradient-text mb-0">Thi Trắc Nghiệm</h1>
-              <p className="text-muted small mb-0">Đồng bộ đám mây tốc độ cao</p>
+              <p className="text-muted small mb-0">Đồng bộ đám mây & Hỗ trợ Offline</p>
             </div>
           </div>
 
           {user && profile && (
             <div className="d-flex align-items-center flex-wrap gap-2">
               <span className="badge bg-accent-light text-dark px-3 py-2 rounded-pill">
-                👤 {profile.full_name || profile.username}{' '}
-                <strong style={{ color: 'var(--accent)' }}>
-                  ({profile.role === 'admin' ? 'Admin' : 'Học viên'})
-                </strong>
+                👤 {profile.full_name || profile.username}
+                {profile.role === 'admin' && (
+                  <strong className="ms-1" style={{ color: 'var(--accent)' }}>
+                    (Admin)
+                  </strong>
+                )}
               </span>
+
+              <button
+                className="btn btn-outline-primary btn-mobile-chip"
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                title="Tải dữ liệu mới nhất và lưu dùng Offline"
+              >
+                {isSyncing ? '⏳ Đang cập nhật...' : '🔄 Cập nhật'}
+              </button>
 
               {profile.role === 'admin' && (
                 <button
-                  className="btn btn-warning btn-mobile-chip text-dark"
+                  className="btn btn-warning btn-mobile-chip text-dark position-relative"
                   onClick={() => setShowAdminPanel(true)}
                 >
                   🛡️ Quản trị viên
+                  {pendingReportsCount > 0 && (
+                    <span className="badge rounded-pill bg-danger ms-1">
+                      {pendingReportsCount}
+                    </span>
+                  )}
                 </button>
               )}
 
@@ -122,6 +171,8 @@ function App() {
           profile={profile}
           showAdminPanel={showAdminPanel}
           setShowAdminPanel={setShowAdminPanel}
+          syncTrigger={syncTrigger}
+          onReportsChanged={() => loadPendingReportsCount(profile?.role)}
         />
       )}
 

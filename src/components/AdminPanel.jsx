@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { supabase, tempSupabaseAdminClient, formatLoginEmail } from '../api/supabaseClient';
+import {
+  fetchQuestionReports,
+  resolveAndFixQuestionReport,
+  deleteQuestionReport,
+} from '../api/axiosConfig';
 
-function AdminPanel({ show, onClose, systemExams = [] }) {
-  const [activeTab, setActiveTab] = useState('create'); // 'create' | 'users'
+function AdminPanel({ show, onClose, systemExams = [], onExamUpdated, onReportsChanged }) {
+  const [activeTab, setActiveTab] = useState('create'); // 'create' | 'users' | 'reports'
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
@@ -11,9 +16,14 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
   const [creating, setCreating] = useState(false);
 
   const [users, setUsers] = useState([]);
-  const [assignmentsMap, setAssignmentsMap] = useState({}); // { [userId]: Set(examId) }
+  const [assignmentsMap, setAssignmentsMap] = useState({});
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+
+  const [reports, setReports] = useState([]);
+  const [loadingReports, setLoadingReports] = useState(false);
+  const [draftEdits, setDraftEdits] = useState({}); // { [reportId]: { question_text, options, correct_ans } }
+  const [savingReportId, setSavingReportId] = useState(null);
 
   const fetchUsersAndAssignments = async () => {
     setLoadingUsers(true);
@@ -35,19 +45,44 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
       });
       setAssignmentsMap(map);
     } catch (err) {
-      toast.error('Lỗi tải danh sách học viên: ' + (err.message || ''));
+      toast.error('Lỗi tải danh sách tài khoản: ' + (err.message || ''));
     } finally {
       setLoadingUsers(false);
+    }
+  };
+
+  const loadReports = async () => {
+    setLoadingReports(true);
+    try {
+      const data = await fetchQuestionReports();
+      setReports(data);
+      const initialDrafts = {};
+      data.forEach((r) => {
+        initialDrafts[r.id] = {
+          question_text: r.question_text,
+          options: Array.isArray(r.options) ? [...r.options] : ['', '', '', ''],
+          correct_ans: Number(r.current_correct_ans) || 1,
+        };
+      });
+      setDraftEdits(initialDrafts);
+      if (onReportsChanged) onReportsChanged();
+    } catch (err) {
+      toast.error('Lỗi tải danh sách báo lỗi: ' + (err.message || ''));
+    } finally {
+      setLoadingReports(false);
     }
   };
 
   useEffect(() => {
     if (show) {
       fetchUsersAndAssignments();
+      loadReports();
     }
   }, [show]);
 
   if (!show) return null;
+
+  const pendingCount = reports.filter((r) => r.status === 'pending').length;
 
   const toggleNewUserExam = (examId) => {
     const id = Number(examId);
@@ -80,7 +115,6 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
     try {
       const email = formatLoginEmail(cleanUsername);
 
-      // Dùng tempSupabaseAdminClient để không làm văng phiên đăng nhập hiện tại của Admin
       const { data, error } = await tempSupabaseAdminClient.auth.signUp({
         email,
         password,
@@ -100,7 +134,6 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
         throw new Error('Không lấy được ID tài khoản mới tạo.');
       }
 
-      // Đảm bảo thông tin profile đầy đủ
       await supabase.from('profiles').upsert({
         id: newUserId,
         username: cleanUsername,
@@ -109,7 +142,6 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
         is_active: true,
       });
 
-      // Cấp quyền ngay các học phần đã tích chọn
       if (selectedNewUserExams.length > 0) {
         const rows = selectedNewUserExams.map((examId) => ({
           user_id: newUserId,
@@ -126,7 +158,7 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
       setSelectedNewUserExams([]);
       fetchUsersAndAssignments();
     } catch (err) {
-      toast.error(err.message || 'Lỗi khi tạo tài khoản học viên!');
+      toast.error(err.message || 'Lỗi khi tạo tài khoản!');
     } finally {
       setCreating(false);
     }
@@ -137,7 +169,6 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
     const currentList = assignmentsMap[userId] || [];
     const isAssigned = currentList.includes(numericExamId);
 
-    // Optimistic UI update
     const updatedList = isAssigned
       ? currentList.filter((id) => id !== numericExamId)
       : [...currentList, numericExamId];
@@ -162,7 +193,6 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
         if (error) throw error;
       }
     } catch (err) {
-      // Rollback nếu lỗi
       setAssignmentsMap({
         ...assignmentsMap,
         [userId]: currentList,
@@ -190,18 +220,66 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
     }
   };
 
+  const handleDraftChange = (reportId, field, value, optIdx = null) => {
+    setDraftEdits((prev) => {
+      const current = prev[reportId] || { question_text: '', options: ['', '', '', ''], correct_ans: 1 };
+      if (field === 'option' && optIdx !== null) {
+        const nextOpts = [...current.options];
+        nextOpts[optIdx] = value;
+        return { ...prev, [reportId]: { ...current, options: nextOpts } };
+      }
+      return { ...prev, [reportId]: { ...current, [field]: value } };
+    });
+  };
+
+  const handleFixAndResolve = async (report) => {
+    const draft = draftEdits[report.id];
+    if (!draft) return;
+
+    setSavingReportId(report.id);
+    try {
+      await resolveAndFixQuestionReport({
+        reportId: report.id,
+        examId: report.exam_id,
+        questionId: report.question_id,
+        originalQuestionText: report.question_text,
+        updatedQuestionText: draft.question_text,
+        updatedOptions: draft.options,
+        updatedCorrectAns: draft.correct_ans,
+      });
+      toast.success('✅ Đã cập nhật đáp án trong học phần và duyệt báo lỗi!');
+      if (onExamUpdated) onExamUpdated();
+      await loadReports();
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi cập nhật đáp án!');
+    } finally {
+      setSavingReportId(null);
+    }
+  };
+
+  const handleDeleteReport = async (reportId) => {
+    try {
+      await deleteQuestionReport(reportId);
+      setReports((prev) => prev.filter((r) => r.id !== reportId));
+      if (onReportsChanged) onReportsChanged();
+      toast.info('🗑️ Đã xóa thông báo lỗi!');
+    } catch {
+      toast.error('Không thể xóa thông báo này!');
+    }
+  };
+
   return (
     <div className="modal d-block modal-backdrop-blur" style={{ zIndex: 1060, padding: '10px' }}>
       <div className="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable modal-fullscreen-md-down">
         <div className="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
           <div className="modal-header modal-header-gradient">
-            <h5 className="modal-title fw-bold">🛡️ Quản Trị Học Viên & Phân Quyền Học Phần</h5>
+            <h5 className="modal-title fw-bold">🛡️ Quản Trị Hệ Thống & Phân Quyền Học Phần</h5>
             <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
           </div>
 
           <div className="modal-body bg-light p-3 p-md-4">
-            {/* Thanh chuyển Tab trong Admin Panel */}
-            <div className="d-flex gap-2 mb-4">
+            {/* Thanh chuyển 3 Tab trong Admin Panel */}
+            <div className="d-flex flex-wrap gap-2 mb-4">
               <button
                 type="button"
                 className={`btn flex-grow-1 mobile-btn-tile ${
@@ -212,7 +290,7 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
                   setEditingUser(null);
                 }}
               >
-                ➕ Cấp tài khoản mới
+                ➕ Cấp tài khoản
               </button>
               <button
                 type="button"
@@ -221,13 +299,25 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
                 }`}
                 onClick={() => setActiveTab('users')}
               >
-                👥 Danh sách học viên ({users.filter((u) => u.role !== 'admin').length})
+                👥 Tài khoản ({users.filter((u) => u.role !== 'admin').length})
+              </button>
+              <button
+                type="button"
+                className={`btn flex-grow-1 mobile-btn-tile position-relative ${
+                  activeTab === 'reports' ? 'btn-accent' : 'btn-light border bg-white text-dark'
+                }`}
+                onClick={() => setActiveTab('reports')}
+              >
+                🔔 Báo lỗi đáp án
+                {pendingCount > 0 && (
+                  <span className="badge rounded-pill bg-danger ms-1">{pendingCount}</span>
+                )}
               </button>
             </div>
 
-            {activeTab === 'create' ? (
+            {activeTab === 'create' && (
               <form onSubmit={handleCreateStudent} className="bg-white p-3 p-md-4 rounded-4 shadow-sm">
-                <h6 className="fw-bold text-primary mb-3">1. Thông tin đăng nhập học viên</h6>
+                <h6 className="fw-bold text-primary mb-3">1. Thông tin đăng nhập</h6>
                 <div className="row g-3 mb-4">
                   <div className="col-12 col-md-4">
                     <label className="form-label small fw-bold text-muted">Username (*)</label>
@@ -284,7 +374,7 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
                 >
                   {systemExams.length === 0 ? (
                     <div className="text-center py-4 text-muted small">
-                      Chưa có học phần hệ thống nào. Hãy tạo đề ở tab "🎓 Học phần được cấp" trước!
+                      Chưa có học phần hệ thống nào. Hãy tạo đề ở tab "🎓 Học phần" trước!
                     </div>
                   ) : (
                     systemExams.map((exam) => {
@@ -321,7 +411,9 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
                   {creating ? '⏳ Đang khởi tạo tài khoản...' : '✅ Tạo Tài Khoản & Cấp Học Phần'}
                 </button>
               </form>
-            ) : (
+            )}
+
+            {activeTab === 'users' && (
               <div>
                 {editingUser ? (
                   <div className="bg-white p-3 p-md-4 rounded-4 shadow-sm animate-in">
@@ -386,16 +478,15 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
                 ) : (
                   <div className="bg-white rounded-4 shadow-sm overflow-hidden">
                     {loadingUsers ? (
-                      <div className="text-center py-5 text-muted">⏳ Đang tải danh sách học viên...</div>
+                      <div className="text-center py-5 text-muted">⏳ Đang tải danh sách tài khoản...</div>
                     ) : users.length === 0 ? (
-                      <div className="text-center py-5 text-muted">Chưa có tài khoản học viên nào.</div>
+                      <div className="text-center py-5 text-muted">Chưa có tài khoản nào.</div>
                     ) : (
                       <div className="table-responsive">
                         <table className="table table-hover align-middle mb-0">
                           <thead className="table-light">
                             <tr>
                               <th className="ps-3">Tài khoản</th>
-                              <th>Vai trò</th>
                               <th className="text-center">Số học phần</th>
                               <th className="text-end pe-3">Thao tác</th>
                             </tr>
@@ -406,17 +497,13 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
                               return (
                                 <tr key={u.id}>
                                   <td className="ps-3">
-                                    <div className="fw-bold">{u.full_name || u.username}</div>
+                                    <div className="fw-bold">
+                                      {u.full_name || u.username}{' '}
+                                      {u.role === 'admin' && (
+                                        <span className="badge bg-danger rounded-pill ms-1">Admin</span>
+                                      )}
+                                    </div>
                                     <small className="text-muted">@{u.username}</small>
-                                  </td>
-                                  <td>
-                                    <span
-                                      className={`badge rounded-pill ${
-                                        u.role === 'admin' ? 'bg-danger' : 'bg-info text-dark'
-                                      }`}
-                                    >
-                                      {u.role === 'admin' ? 'Admin' : 'Học viên'}
-                                    </span>
                                   </td>
                                   <td className="text-center">
                                     {u.role === 'admin' ? (
@@ -455,6 +542,129 @@ function AdminPanel({ show, onClose, systemExams = [] }) {
                       </div>
                     )}
                   </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'reports' && (
+              <div>
+                {loadingReports ? (
+                  <div className="text-center py-5 text-muted">⏳ Đang tải thông báo lỗi...</div>
+                ) : reports.length === 0 ? (
+                  <div className="bg-white rounded-4 p-5 text-center text-muted shadow-sm">
+                    🎉 Hiện chưa có thông báo lỗi câu hỏi nào!
+                  </div>
+                ) : (
+                  reports.map((report) => {
+                    const draft = draftEdits[report.id] || {
+                      question_text: report.question_text,
+                      options: report.options || ['', '', '', ''],
+                      correct_ans: report.current_correct_ans || 1,
+                    };
+                    const isResolved = report.status === 'resolved';
+
+                    return (
+                      <div
+                        key={report.id}
+                        className={`card border-0 shadow-sm rounded-4 mb-3 overflow-hidden ${
+                          isResolved ? 'opacity-75' : 'border-accent-left'
+                        }`}
+                      >
+                        <div className="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2 py-2 border-bottom">
+                          <div>
+                            <span className="badge bg-accent-light text-dark me-2">
+                              📚 {report.exam_title}
+                            </span>
+                            <small className="text-muted">
+                              Báo bởi <strong>{report.username}</strong> •{' '}
+                              {new Date(report.created_at).toLocaleString('vi-VN')}
+                            </small>
+                          </div>
+                          <div className="d-flex align-items-center gap-2">
+                            <span
+                              className={`badge rounded-pill ${
+                                isResolved ? 'bg-success' : 'bg-warning text-dark'
+                              }`}
+                            >
+                              {isResolved ? '✓ Đã sửa' : '⏳ Chờ xử lý'}
+                            </span>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => handleDeleteReport(report.id)}
+                            >
+                              🗑️ Xóa
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="card-body p-3 bg-white">
+                          <div className="alert alert-warning py-2 px-3 mb-3 rounded-3 border-0">
+                            <strong>💬 Ghi chú của người dùng:</strong> {report.note}
+                          </div>
+
+                          <label className="small fw-bold text-muted mb-1">Nội dung câu hỏi:</label>
+                          <textarea
+                            className="form-control mb-2 rounded-3"
+                            rows="2"
+                            value={draft.question_text}
+                            onChange={(e) =>
+                              handleDraftChange(report.id, 'question_text', e.target.value)
+                            }
+                          />
+
+                          <div className="row g-2 mb-3">
+                            {[0, 1, 2, 3].map((optIdx) => (
+                              <div className="col-12 col-md-6" key={optIdx}>
+                                <div className="input-group">
+                                  <span className="input-group-text fw-bold">
+                                    {String.fromCharCode(65 + optIdx)}
+                                  </span>
+                                  <input
+                                    className="form-control"
+                                    value={draft.options[optIdx] || ''}
+                                    onChange={(e) =>
+                                      handleDraftChange(report.id, 'option', e.target.value, optIdx)
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 bg-light p-2 rounded-3">
+                            <div className="d-flex align-items-center gap-1 flex-wrap">
+                              <span className="fw-bold text-success me-2 small">Chọn đáp án đúng:</span>
+                              {[1, 2, 3, 4].map((num) => (
+                                <button
+                                  key={num}
+                                  type="button"
+                                  className={`btn btn-mobile-chip ${
+                                    Number(draft.correct_ans) === num
+                                      ? 'btn-success text-white'
+                                      : 'btn-outline-secondary bg-white'
+                                  }`}
+                                  onClick={() => handleDraftChange(report.id, 'correct_ans', num)}
+                                >
+                                  {String.fromCharCode(64 + num)} ({num})
+                                </button>
+                              ))}
+                            </div>
+
+                            <button
+                              type="button"
+                              className="btn btn-accent btn-mobile-chip"
+                              onClick={() => handleFixAndResolve(report)}
+                              disabled={savingReportId === report.id}
+                            >
+                              {savingReportId === report.id
+                                ? '⏳ Đang lưu...'
+                                : '💾 Lưu sửa đáp án & Duyệt'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             )}

@@ -62,7 +62,7 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
 
   return (
     <>
-      {/* Thanh chuyển đổi 2 Tab: Học phần được cấp & Học phần của tôi (Note) */}
+      {/* Thanh chuyển đổi 2 Tab: Học phần & Học phần của tôi (Note) */}
       <div className="d-flex gap-2 mb-3">
         <button
           type="button"
@@ -74,7 +74,7 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
             setShowCreateBox(false);
           }}
         >
-          🎓 Học phần được cấp ({systemExams.length})
+          🎓 Học phần ({systemExams.length})
         </button>
         <button
           type="button"
@@ -163,7 +163,7 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
       <div className="d-flex justify-content-between align-items-center mb-3 mt-2 flex-wrap gap-2">
         <h5 className="m-0 fw-bold">
           {activeTab === 'system'
-            ? `🎓 Học phần được cấp (${systemExams.length})`
+            ? `🎓 Học phần (${systemExams.length})`
             : `📒 Học phần của tôi (${personalExams.length})`}
         </h5>
         <button
@@ -177,7 +177,7 @@ function ExamList({ user, profile, exams, fetchExamsList, fetchHistory, startExa
 
       {displayedExams.length === 0 ? (
         <EmptyState
-          title={activeTab === 'system' ? "Chưa có học phần được cấp" : "Chưa có Note cá nhân nào"}
+          title={activeTab === 'system' ? "Chưa có học phần nào" : "Chưa có Note cá nhân nào"}
           message={
             activeTab === 'system'
               ? (isAdmin

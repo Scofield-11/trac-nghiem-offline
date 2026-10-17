@@ -16,7 +16,7 @@ import ExamEditForm from './ExamEditForm';
 import ExamHistoryTable from './ExamHistoryTable';
 import AdminPanel from './AdminPanel';
 
-function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel }) {
+function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigger, onReportsChanged }) {
   const [editingExamId, setEditingExamId] = useState(null);
   const [editTitle, setEditTitle] = useState("");
   const [editQuestions, setEditQuestions] = useState([]);
@@ -69,7 +69,7 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel }) {
   useEffect(() => {
     fetchExamsList().finally(() => setIsLoading(false));
     fetchHistory();
-  }, [user?.id]);
+  }, [user?.id, syncTrigger]);
 
   const handleClearHistory = async () => {
     if (window.confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử làm bài của tài khoản này?")) {
@@ -347,6 +347,8 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel }) {
           show={showAdminPanel}
           onClose={() => setShowAdminPanel(false)}
           systemExams={exams.filter(e => e.is_system)}
+          onExamUpdated={fetchExamsList}
+          onReportsChanged={onReportsChanged}
         />
       )}
 
