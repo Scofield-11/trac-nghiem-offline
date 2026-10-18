@@ -106,7 +106,8 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
       const formattedQuestions = data.questions.map(q => ({
         question: q.question,
         options: [...q.options],
-        correct_ans: q.correct_ans
+        correct_ans: q.correct_ans,
+        image: q.image || ""
       }));
 
       setEditQuestions(formattedQuestions);
@@ -134,7 +135,7 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
   };
 
   const handleAddNewQuestionToEdit = () => {
-    setEditQuestions([...editQuestions, { question: "", options: ["", "", "", ""], correct_ans: 1 }]);
+    setEditQuestions([...editQuestions, { question: "", options: ["", "", "", ""], correct_ans: 1, image: "" }]);
   };
 
   const handleImportToEdit = () => {
@@ -147,11 +148,12 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
     for (let line of lines) {
       if (!line.trim()) continue;
       const parts = line.split('|').map(p => p.trim());
-      if (parts.length === 6) {
+      if (parts.length === 6 || parts.length === 7) {
         newQuestions.push({
           question: parts[0],
           options: [parts[1], parts[2], parts[3], parts[4]],
-          correct_ans: parseInt(parts[5]) || 1
+          correct_ans: parseInt(parts[5]) || 1,
+          image: parts[6] || ""
         });
       } else {
         errorCount++;
@@ -172,7 +174,9 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
   const handleSaveEdit = async () => {
     if (!editTitle.trim()) return toast.warning("Tên bài thi không được để trống!");
     const cleanSubject = editSubject.trim() || "Chưa phân loại";
-    const raw = editQuestions.map(q => `${q.question} | ${q.options[0]} | ${q.options[1]} | ${q.options[2]} | ${q.options[3]} | ${q.correct_ans}`).join('\n');
+    const raw = editQuestions.map(q =>
+      `${q.question} | ${q.options[0]} | ${q.options[1]} | ${q.options[2]} | ${q.options[3]} | ${q.correct_ans}${q.image ? ` | ${q.image}` : ''}`
+    ).join('\n');
     try {
       await api.put(`/exams/${editingExamId}`, {
         title: editTitle,
@@ -243,10 +247,10 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
       }
 
       const existingRaw = existingData.questions.map(eq =>
-        `${eq.question} | ${eq.options[0]} | ${eq.options[1]} | ${eq.options[2]} | ${eq.options[3]} | ${eq.correct_ans}`
+        `${eq.question} | ${eq.options[0]} | ${eq.options[1]} | ${eq.options[2]} | ${eq.options[3]} | ${eq.correct_ans}${eq.image ? ` | ${eq.image}` : ''}`
       ).join('\n');
 
-      const rawLine = `${questionToSave.question} | ${questionToSave.options[0]} | ${questionToSave.options[1]} | ${questionToSave.options[2]} | ${questionToSave.options[3]} | ${questionToSave.correct_ans}`;
+      const rawLine = `${questionToSave.question} | ${questionToSave.options[0]} | ${questionToSave.options[1]} | ${questionToSave.options[2]} | ${questionToSave.options[3]} | ${questionToSave.correct_ans}${questionToSave.image ? ` | ${questionToSave.image}` : ''}`;
       const newRawText = existingRaw ? existingRaw + '\n' + rawLine : rawLine;
 
       await api.put(`/exams/${exam.id}`, {
@@ -265,7 +269,7 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
     if (!newSaveTitle.trim()) return toast.warning("Vui lòng nhập tên đề thi mới!");
     try {
       const inheritedSubject = examData?.subject || selectedSubject || "Chưa phân loại";
-      const rawLine = `${questionToSave.question} | ${questionToSave.options[0]} | ${questionToSave.options[1]} | ${questionToSave.options[2]} | ${questionToSave.options[3]} | ${questionToSave.correct_ans}`;
+      const rawLine = `${questionToSave.question} | ${questionToSave.options[0]} | ${questionToSave.options[1]} | ${questionToSave.options[2]} | ${questionToSave.options[3]} | ${questionToSave.correct_ans}${questionToSave.image ? ` | ${questionToSave.image}` : ''}`;
       await api.post("/exams/import", {
         title: newSaveTitle.trim(),
         subject: inheritedSubject,
@@ -308,7 +312,7 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
             <h5 className="text-danger fw-bold mb-4">Các câu làm sai:</h5>
             {viewHistory.wrongDetails && viewHistory.wrongDetails.map((q, i) => (
               <div key={i} className="bg-white wrong-answer-card shadow-sm mb-4 p-4" style={{ transform: 'none' }}>
-                <div className="d-flex justify-content-between align-items-start mb-4">
+                <div className="d-flex justify-content-between align-items-start mb-3">
                   <h5 className="mb-0 text-dark fw-bold">{q.question}</h5>
                   <div className="d-flex gap-2 ms-3">
                     <button className="btn btn-sm btn-outline-info fw-bold text-dark text-nowrap" onClick={() => handleCopyQuestion(q)} title="Sao chép câu hỏi">
@@ -319,6 +323,16 @@ function ExamMode({ user, profile, showAdminPanel, setShowAdminPanel, syncTrigge
                     </button>
                   </div>
                 </div>
+                {q.image && (
+                  <div className="text-center mb-3 bg-light p-2 rounded-3 border">
+                    <img
+                      src={q.image}
+                      alt="Hình minh họa"
+                      className="img-fluid rounded-2"
+                      style={{ maxHeight: '260px', objectFit: 'contain' }}
+                    />
+                  </div>
+                )}
                 <div className="row g-2">
                   {q.options ? q.options.map((opt, oIdx) => {
                     const optNumber = oIdx + 1;

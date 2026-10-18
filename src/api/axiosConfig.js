@@ -83,13 +83,17 @@ const parseRawTextToQuestions = (rawText) => {
   lines.forEach((line, idx) => {
     if (!line.trim()) return;
     const parts = line.split('|').map(p => p.trim());
-    if (parts.length === 6) {
-      questions.push({
+    if (parts.length === 6 || parts.length === 7) {
+      const qObj = {
         id: Date.now() + idx + Math.floor(Math.random() * 10000),
         question: parts[0],
         options: [parts[1], parts[2], parts[3], parts[4]],
         correct_ans: parseInt(parts[5], 10) || 1
-      });
+      };
+      if (parts[6]) {
+        qObj.image = parts[6];
+      }
+      questions.push(qObj);
     }
   });
 
@@ -551,7 +555,8 @@ export const exportSingleExamToJson = (title, questions, subject = 'Chưa phân 
       id: q.id || idx + 1,
       question: q.question,
       options: q.options,
-      correct_ans: Number(q.correct_ans) || 1
+      correct_ans: Number(q.correct_ans) || 1,
+      ...(q.image ? { image: q.image } : {})
     }))
   };
 
@@ -605,7 +610,8 @@ const normalizeExamObject = (rawExam, indexOffset = 0, fallbackSubject = 'Chưa 
       id: Date.now() + indexOffset * 1000 + idx + Math.floor(Math.random() * 1000),
       question: String(q.question).trim(),
       options: q.options.slice(0, 4).map(opt => String(opt).trim()),
-      correct_ans: Number(q.correct_ans) >= 1 && Number(q.correct_ans) <= 4 ? Number(q.correct_ans) : 1
+      correct_ans: Number(q.correct_ans) >= 1 && Number(q.correct_ans) <= 4 ? Number(q.correct_ans) : 1,
+      ...(q.image && String(q.image).trim() ? { image: String(q.image).trim() } : {})
     }));
 
   if (validQuestions.length === 0) return null;

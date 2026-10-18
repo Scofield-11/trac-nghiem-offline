@@ -46,6 +46,16 @@ function QuestionReportModal({ show, onClose, question, examId, examTitle }) {
               <div className="bg-white p-3 rounded-3 border mb-3 shadow-sm">
                 <div className="small text-muted mb-1">Học phần: <strong>{examTitle}</strong></div>
                 <div className="fw-bold text-dark mb-2">{question.question}</div>
+                {question.image && (
+                  <div className="text-center my-2 bg-light p-2 rounded-3 border">
+                    <img
+                      src={question.image}
+                      alt="Minh họa câu hỏi"
+                      className="img-fluid rounded-2"
+                      style={{ maxHeight: '160px', objectFit: 'contain' }}
+                    />
+                  </div>
+                )}
                 <div className="row g-1 small">
                   {question.options?.map((opt, idx) => {
                     const isCorrect = idx + 1 === Number(question.correct_ans);

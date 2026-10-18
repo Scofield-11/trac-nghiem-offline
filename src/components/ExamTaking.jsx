@@ -9,6 +9,7 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showConfirmBack, setShowConfirmBack] = useState(false);
   const [reportingQuestion, setReportingQuestion] = useState(null);
+  const [zoomedImage, setZoomedImage] = useState(null);
   const longPressTimerRef = useRef(null);
 
   // Xử lý nhấn giữ (Long Press 550ms) vào câu hỏi để mở bảng ghi chú gửi Admin
@@ -60,7 +61,8 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
       question: q.question,
       options: [...q.options],
       correct_ans: q.correct_ans,
-      user_ans: answers[q.id]
+      user_ans: answers[q.id],
+      ...(q.image ? { image: q.image } : {})
     }));
 
     try {
@@ -83,7 +85,7 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
     if (!newTitle || !newTitle.trim()) return;
 
     const rawText = wrongQs.map(q =>
-      `${q.question} | ${q.options[0]} | ${q.options[1]} | ${q.options[2]} | ${q.options[3]} | ${q.correct_ans}`
+      `${q.question} | ${q.options[0]} | ${q.options[1]} | ${q.options[2]} | ${q.options[3]} | ${q.correct_ans}${q.image ? ` | ${q.image}` : ''}`
     ).join('\n');
 
     try {
@@ -218,6 +220,29 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
         </div>
       </div>
 
+      {/* Modal phóng to sơ đồ / hình ảnh khi học viên chạm vào ảnh */}
+      {zoomedImage && (
+        <div
+          className="modal d-block modal-backdrop-blur"
+          style={{ zIndex: 1085, padding: '12px', cursor: 'zoom-out' }}
+          onClick={() => setZoomedImage(null)}
+        >
+          <div className="modal-dialog modal-dialog-centered modal-lg">
+            <div className="modal-content bg-transparent border-0 text-center">
+              <img
+                src={zoomedImage}
+                alt="Phóng to"
+                className="img-fluid rounded-4 shadow-lg mx-auto bg-white p-2"
+                style={{ maxHeight: '85vh', objectFit: 'contain' }}
+              />
+              <div className="mt-2">
+                <button className="btn btn-light rounded-pill px-4 fw-bold shadow">✖ Đóng ảnh</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal báo lỗi câu hỏi khi người dùng nhấn giữ */}
       <QuestionReportModal
         show={Boolean(reportingQuestion)}
@@ -252,6 +277,23 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
                     <h5 className="mb-0 fw-bold" style={{ fontSize: '1.05rem', lineHeight: '1.45' }}>{q.question}</h5>
                   </div>
                 </div>
+
+                {q.image && (
+                  <div
+                    className="text-center mb-3 bg-light p-2 rounded-3 border"
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <img
+                      src={q.image}
+                      alt={`Hình minh họa câu ${idx + 1}`}
+                      className="img-fluid rounded-2"
+                      style={{ maxHeight: '260px', objectFit: 'contain', cursor: 'zoom-in' }}
+                      onClick={() => setZoomedImage(q.image)}
+                      title="Bấm vào ảnh để phóng to"
+                    />
+                  </div>
+                )}
 
                 <div className="row g-2 mb-3">
                   {q.options.map((opt, oIdx) => {
@@ -331,6 +373,21 @@ function ExamTaking({ examData, isInstantFeedback, backToList, fetchHistory, ope
                     <span className="question-number mt-1">{idx + 1}</span>
                     <h5 className="mb-0 fw-bold" style={{ fontSize: '1.05rem', lineHeight: '1.45' }}>{q.question}</h5>
                   </div>
+                  {q.image && (
+                    <div
+                      className="text-center mb-3 bg-light p-2 rounded-3 border"
+                      onTouchStart={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      <img
+                        src={q.image}
+                        alt={`Hình minh họa câu ${idx + 1}`}
+                        className="img-fluid rounded-2"
+                        style={{ maxHeight: '260px', objectFit: 'contain', cursor: 'zoom-in' }}
+                        onClick={() => setZoomedImage(q.image)}
+                      />
+                    </div>
+                  )}
                   <div className="row g-2 mb-3">
                     {q.options.map((opt, oIdx) => {
                       const optNumber = oIdx + 1;
