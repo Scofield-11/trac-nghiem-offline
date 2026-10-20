@@ -2,7 +2,45 @@ import { supabase } from './supabaseClient';
 
 const EXAMS_LIST_CACHE_KEY = 'exams_list_cache';
 const HISTORY_CACHE_KEY = 'exam_history_cache';
+const AUTH_USER_CACHE_KEY = 'cached_auth_user';
+const USER_PROFILE_CACHE_KEY = 'cached_user_profile';
 const getExamCacheKey = (id) => `exam_cache_${id}`;
+
+export const getCachedAuthUser = () => {
+  try {
+    const raw = localStorage.getItem(AUTH_USER_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setCachedAuthUser = (userObj) => {
+  try {
+    if (userObj) localStorage.setItem(AUTH_USER_CACHE_KEY, JSON.stringify(userObj));
+    else localStorage.removeItem(AUTH_USER_CACHE_KEY);
+  } catch {
+    // Ignore
+  }
+};
+
+export const getCachedUserProfile = () => {
+  try {
+    const raw = localStorage.getItem(USER_PROFILE_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setCachedUserProfile = (profileObj) => {
+  try {
+    if (profileObj) localStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(profileObj));
+    else localStorage.removeItem(USER_PROFILE_CACHE_KEY);
+  } catch {
+    // Ignore
+  }
+};
 
 const createError = (detailMessage) => ({
   response: { data: { detail: detailMessage } }
@@ -62,6 +100,8 @@ export const clearAllExamCaches = () => {
   try {
     localStorage.removeItem(EXAMS_LIST_CACHE_KEY);
     localStorage.removeItem(HISTORY_CACHE_KEY);
+    localStorage.removeItem(AUTH_USER_CACHE_KEY);
+    localStorage.removeItem(USER_PROFILE_CACHE_KEY);
     Object.keys(localStorage).forEach((key) => {
       if (key.startsWith('exam_cache_')) {
         localStorage.removeItem(key);
@@ -118,17 +158,55 @@ const mapExamSummary = (row) => ({
 
 const api = {
   get: async (url) => {
-    // 1. Lấy danh sách đề: TUYỆT ĐỐI KHÔNG select cột questions để phản hồi tức thì
+    // 1. Lấy danh sách đề: Nếu đang Offline thì trả ngay từ localStorage
     if (url === "/exams") {
+      if (!navigator.onLine) {
+        return { data: getCachedExamsList() };
+      }
+
       const { data, error } = await supabase
         .from('exams')
         .select('id, title, subject, question_count, is_system, owner_id, created_at')
         .order('created_at', { ascending: false });
 
-      if (error) throw createError(error.message || "Không thể tải danh sách đề thi");
+      if (error) {
+        const fallback = getCachedExamsList();
+        if (fallback.length > 0) return { data: fallback };
+        throw createError(error.message || "Không thể tải danh sách đề thi");
+      }
 
       const mapped = (data || []).map(mapExamSummary);
       setCachedExamsList(mapped);
+
+      // Tự động tải ngầm nội dung câu hỏi của các đề chưa có trong máy để sẵn sàng dùng Offline
+      const missingIds = mapped
+        .filter((item) => !getCachedExamById(item.id))
+        .map((item) => item.id);
+
+      if (missingIds.length > 0) {
+        supabase
+          .from('exams')
+          .select('*')
+          .in('id', missingIds)
+          .then(({ data: fullExams }) => {
+            (fullExams || []).forEach((item) => {
+              setCachedExamById(item.id, {
+                id: item.id,
+                title: item.title,
+                subject: normalizeSubject(item.subject),
+                questions: Array.isArray(item.questions) ? item.questions : [],
+                questionCount:
+                  item.question_count ??
+                  (Array.isArray(item.questions) ? item.questions.length : 0),
+                is_system: Boolean(item.is_system),
+                owner_id: item.owner_id,
+                created_at: item.created_at,
+              });
+            });
+          })
+          .catch(() => {});
+      }
+
       return { data: mapped };
     }
 

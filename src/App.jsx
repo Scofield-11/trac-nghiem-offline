@@ -5,12 +5,20 @@ import ExamMode from './components/ExamMode';
 import LoginScreen from './components/LoginScreen';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import { supabase } from './api/supabaseClient';
-import { clearAllExamCaches, syncAllDataForOffline, fetchQuestionReports } from './api/axiosConfig';
+import {
+  clearAllExamCaches,
+  syncAllDataForOffline,
+  fetchQuestionReports,
+  getCachedAuthUser,
+  setCachedAuthUser,
+  getCachedUserProfile,
+  setCachedUserProfile,
+} from './api/axiosConfig';
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [authChecking, setAuthChecking] = useState(true);
+  const [user, setUser] = useState(() => getCachedAuthUser());
+  const [profile, setProfile] = useState(() => getCachedUserProfile());
+  const [authChecking, setAuthChecking] = useState(() => !getCachedAuthUser());
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [isHideHeader, setIsHideHeader] = useState(false);
@@ -19,7 +27,7 @@ function App() {
   const [pendingReportsCount, setPendingReportsCount] = useState(0);
 
   const loadPendingReportsCount = async (role) => {
-    if (role !== 'admin') return;
+    if (role !== 'admin' || !navigator.onLine) return;
     try {
       const reports = await fetchQuestionReports();
       setPendingReportsCount(reports.filter((r) => r.status === 'pending').length);
@@ -30,25 +38,14 @@ function App() {
 
   const fetchUserProfile = async (currentUser) => {
     if (!currentUser) {
-      setProfile(null);
-      return;
-    }
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', currentUser.id)
-      .single();
-
-    if (data && data.is_active === false) {
-      await supabase.auth.signOut();
-      clearAllExamCaches();
-      setUser(null);
-      setProfile(null);
-      toast.error('Tài khoản của bạn đã bị khóa!');
+      if (navigator.onLine) {
+        setProfile(null);
+        setCachedUserProfile(null);
+      }
       return;
     }
 
-    const resolvedProfile = data || {
+    const fallbackProfile = getCachedUserProfile() || {
       id: currentUser.id,
       username: currentUser.email?.split('@')[0] || 'user',
       full_name: currentUser.user_metadata?.full_name || '',
@@ -56,24 +53,76 @@ function App() {
       is_active: true,
     };
 
-    setProfile(resolvedProfile);
-    loadPendingReportsCount(resolvedProfile.role);
+    // Nếu đang Offline thì dùng ngay Profile trong máy, không gọi mạng tránh treo app
+    if (!navigator.onLine) {
+      setProfile(fallbackProfile);
+      return;
+    }
+
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', currentUser.id)
+        .single();
+
+      if (data && data.is_active === false) {
+        await supabase.auth.signOut();
+        clearAllExamCaches();
+        setUser(null);
+        setProfile(null);
+        toast.error('Tài khoản của bạn đã bị khóa!');
+        return;
+      }
+
+      const resolvedProfile = data || fallbackProfile;
+      setProfile(resolvedProfile);
+      setCachedUserProfile(resolvedProfile);
+      loadPendingReportsCount(resolvedProfile.role);
+    } catch {
+      setProfile(fallbackProfile);
+    }
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      fetchUserProfile(currentUser).finally(() => setAuthChecking(false));
-    });
+    // Nếu mở app khi đang Offline và đã có tài khoản lưu trong máy thì vào thẳng 0ms
+    if (!navigator.onLine && getCachedAuthUser()) {
+      setAuthChecking(false);
+      return;
+    }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        const currentUser = session?.user ?? null;
+        if (currentUser) {
+          setUser(currentUser);
+          setCachedAuthUser(currentUser);
+          return fetchUserProfile(currentUser);
+        } else if (!navigator.onLine && getCachedAuthUser()) {
+          // Giữ nguyên phiên Offline nếu mạng rớt làm refresh token thất bại
+          return;
+        } else {
+          setUser(null);
+          setProfile(null);
+          setCachedAuthUser(null);
+          setCachedUserProfile(null);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAuthChecking(false));
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const currentUser = session?.user ?? null;
-      setUser(currentUser);
       if (currentUser) {
+        setUser(currentUser);
+        setCachedAuthUser(currentUser);
         fetchUserProfile(currentUser);
-      } else {
+      } else if (event === 'SIGNED_OUT' && navigator.onLine) {
+        setUser(null);
         setProfile(null);
+        setCachedAuthUser(null);
+        setCachedUserProfile(null);
       }
     });
 
@@ -192,7 +241,11 @@ function App() {
         <LoginScreen
           onLoginSuccess={(loggedUser, loggedProfile) => {
             setUser(loggedUser);
-            if (loggedProfile) setProfile(loggedProfile);
+            setCachedAuthUser(loggedUser);
+            if (loggedProfile) {
+              setProfile(loggedProfile);
+              setCachedUserProfile(loggedProfile);
+            }
           }}
         />
       ) : (
