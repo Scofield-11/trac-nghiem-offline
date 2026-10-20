@@ -310,6 +310,12 @@ function ExamList({
         </button>
       </div>
 
+      {!isAdmin && activeTab === 'system' && (
+        <div className="text-muted small mb-3 px-1">
+          💬 <em>Hãy nhắn hoặc gửi tên đăng nhập {profile?.username ? <strong>(@{profile.username})</strong> : ''} cho Admin để lấy học phần nhé!</em>
+        </div>
+      )}
+
       {displayedExams.length === 0 ? (
         <EmptyState
           title={activeTab === 'system' ? "Chưa có môn học / học phần nào" : "Chưa có Note cá nhân nào"}
@@ -317,7 +323,7 @@ function ExamList({
             activeTab === 'system'
               ? (isAdmin
                   ? "Bấm '➕ Tạo học phần Hệ thống' ở trên để thêm môn học mới và phân quyền cho học viên!"
-                  : "Vui lòng liên hệ Admin để được cấp quyền truy cập môn học.")
+                  : "Hãy nhắn hoặc gửi tài khoản cho Admin để lấy học phần nhé!")
               : "Bạn có thể bấm '➕ Tạo Note', hoặc bấm '⭐ Lưu câu này' khi đang làm bài để gom câu hỏi khó theo từng môn về đây!"
           }
         />
